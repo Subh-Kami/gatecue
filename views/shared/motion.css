@@ -1,0 +1,58 @@
+/* Motion: no-motion first; everything below only runs when the viewer allows motion.
+   Timings: Material 3 emphasized-decelerate for entrances, 50-60 ms stagger (Alexa+ cards fade in left to right). */
+:root { --ease-enter: cubic-bezier(.05,.7,.1,1); --ease-std: cubic-bezier(.2,0,0,1); }
+@media (prefers-reduced-motion: no-preference) {
+  .m-in { animation: m-in 380ms var(--ease-enter) both; animation-delay: calc(var(--i, 0) * 60ms); }
+  @keyframes m-in { from { opacity: 0; transform: translateY(10px); } }
+  .m-fade { animation: m-fade 300ms var(--ease-std) both; animation-delay: calc(var(--i, 0) * 60ms); }
+  @keyframes m-fade { from { opacity: 0; } }
+  .m-draw { stroke-dasharray: var(--len, 400); stroke-dashoffset: var(--len, 400); animation: m-draw 1000ms var(--ease-enter) 200ms forwards; }
+  @keyframes m-draw { to { stroke-dashoffset: 0; } }
+  .m-pop { animation: m-pop 420ms cubic-bezier(.34,1.56,.64,1) both; animation-delay: var(--d, 0ms); }
+  @keyframes m-pop { from { opacity: 0; transform: scale(.6); } }
+  .m-plane { offset-rotate: auto; animation: m-plane 2200ms var(--ease-std) 500ms both; }
+  @keyframes m-plane { from { offset-distance: 0%; } to { offset-distance: var(--to, 100%); } }
+  .m-sun { animation: m-sun 1400ms var(--ease-enter) 150ms both; }
+  @keyframes m-sun { from { transform: translateY(18px); opacity: 0; } }
+  .m-pulse { animation: m-pulse 1600ms ease-in-out 2; }
+  @keyframes m-pulse { 50% { transform: scale(1.04); } }
+  /* Departure-board flip: each digit falls into place from its top edge, left to right. */
+  .roll { display: inline-block; perspective: 320px; }
+  .roll > span { display: inline-block; transform-origin: 50% 8%; backface-visibility: hidden; animation: flip 620ms cubic-bezier(.3,1.35,.5,1) both; animation-delay: calc(var(--k, 0) * 55ms + 140ms); }
+  @keyframes flip { 0% { transform: rotateX(-100deg); opacity: 0; } 35% { opacity: 1; } 100% { transform: rotateX(0); } }
+  /* AM/PM lands last and a little heavy: the one thing GateCue never lets you misread. */
+  .ampm { display: inline-block; animation: stamp 560ms cubic-bezier(.2,1.5,.35,1) both; animation-delay: var(--stamp, 420ms); }
+  @keyframes stamp { 0% { transform: scale(1.9); opacity: 0; filter: blur(3px); } 55% { opacity: 1; filter: none; } 100% { transform: scale(1); } }
+}
+@media (prefers-reduced-motion: reduce) {
+  .m-plane { offset-distance: var(--to, 100%); }
+}
+/* Scene layers: slow, continuous, transform/opacity only. Each scene has at most a few moving parts. */
+@media (prefers-reduced-motion: no-preference) {
+  .scene .s-drift { animation: s-drift var(--dur, 80s) ease-in-out infinite alternate; }
+  @keyframes s-drift { to { transform: translateX(var(--dx, 26px)); } }
+  .scene .s-twinkle { animation: s-tw 3.2s ease-in-out var(--d, 0s) infinite; }
+  @keyframes s-tw { 50% { opacity: .2; } }
+  .scene .s-blink { animation: s-blink 2.4s ease-in-out var(--d, 0s) infinite; }
+  @keyframes s-blink { 50% { opacity: .35; } }
+  .scene .s-beacon { animation: s-beacon 1.6s steps(1) infinite; }
+  @keyframes s-beacon { 50% { opacity: 0; } }
+  .scene .s-glow { animation: s-glow 5s ease-in-out infinite; }
+  @keyframes s-glow { 50% { opacity: .82; } }
+  .scene .s-sun { animation: s-rise 1600ms var(--ease-enter) 100ms both; }
+  @keyframes s-rise { from { transform: translateY(14px); opacity: 0; } }
+  .scene .s-taxi { animation: s-taxi 16s ease-in-out infinite alternate; }
+  @keyframes s-taxi { from { transform: translateX(-10px); } to { transform: translateX(8px); } }
+  .scene .s-climb { animation: s-climb 9s ease-in-out infinite alternate; }
+  @keyframes s-climb { from { transform: translate(-6px, 4px); } to { transform: translate(8px, -4px); } }
+  .scene .s-idle { animation: s-idle 1.8s ease-in-out infinite; }
+  @keyframes s-idle { 50% { transform: translateY(.5px); } }
+  .journey .j-car { animation: j-car 1.6s var(--ease-enter) 300ms both; }
+  @keyframes j-car { from { transform: translateX(0); } to { transform: translateX(440px); } }
+  .push { animation: push 14s ease-in-out infinite alternate; transform-origin: 60% 60%; }
+  @keyframes push { from { transform: scale(1); } to { transform: scale(1.06); } }
+}
+@media (prefers-reduced-motion: reduce) { .journey .j-car { transform: translateX(440px); } }
+
+/* AM is sunrise gold, PM is dusk violet, everywhere GateCue shows a time over a picture. */
+.ampm.am { color: #FFD98A; } .ampm.pm { color: #CDBDFF; }

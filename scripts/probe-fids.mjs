@@ -1,0 +1,10 @@
+const [,, iata="SEA", from="2026-10-15T05:00", to="2026-10-15T12:00", dest="SFO"] = process.argv;
+const path = `/flights/airports/iata/${iata}/${from}/${to}?withLeg=true&direction=Departure&withCancelled=true&withCodeshared=false&withCargo=false&withPrivate=false&withLocation=false`;
+const r = await fetch(`https://aerodatabox.p.rapidapi.com${path}`, { headers: { "X-RapidAPI-Key": process.env.RAPIDAPI_KEY, "X-RapidAPI-Host": "aerodatabox.p.rapidapi.com" } });
+console.log("status", r.status, "units-remaining", r.headers.get("x-ratelimit-requests-remaining"));
+const j = await r.json().catch(()=>null);
+const deps = j?.departures ?? [];
+console.log("total departures in window:", deps.length);
+const m = deps.filter(d => d.arrival?.airport?.iata === dest);
+for (const d of m) console.log(d.number, d.airline?.name, d.status, "dep", d.departure?.scheduledTime?.local, "arr", d.arrival?.scheduledTime?.local, "term", d.departure?.terminal ?? "");
+if (!deps.length) console.log(JSON.stringify(j).slice(0,300));

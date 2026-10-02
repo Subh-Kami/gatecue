@@ -1,0 +1,11 @@
+import { build } from "esbuild";
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
+const require = createRequire(import.meta.url);
+mkdirSync("dist/host", { recursive: true });
+await build({ entryPoints: ["host/host.ts"], bundle: true, format: "esm", target: "es2022", outfile: "dist/host/host.js", platform: "browser" });
+copyFileSync("host/index.html", "dist/host/index.html");
+const fontDir = require.resolve("@fontsource/noto-sans/package.json").replace(/package\.json$/, "files/");
+const faces = [300, 400, 500, 600].map((w) => { copyFileSync(`${fontDir}noto-sans-latin-${w}-normal.woff2`, `dist/host/noto-${w}.woff2`); return `@font-face{font-family:"GC Sans";font-weight:${w};src:url(./noto-${w}.woff2) format("woff2")}`; }).join("\n");
+writeFileSync("dist/host/host.css", faces + "\n" + readFileSync("views/shared/motion.css", "utf8") + "\n" + readFileSync("host/host.css", "utf8").replace(/@font-face \{[^}]*\}\n?/, ""));
+console.log("built dist/host");

@@ -1,0 +1,2 @@
+// GateCue mark: a departure gate arch with a cue dot. Original artwork, uses currentColor.
+export const LOGO_SVG = `<svg viewBox="0 0 120 24" role="img" aria-label="GateCue"><g fill="none" stroke="var(--gc-amber)" stroke-width="2.4" stroke-linecap="round"><path d="M3 21V10a8 8 0 0 1 16 0v11"/></g><circle cx="11" cy="15" r="2.6" fill="var(--gc-amber)"/><text x="26" y="18" font-family="inherit" font-size="16" font-weight="800" fill="currentColor" letter-spacing=".2">GateCue</text></svg>`;

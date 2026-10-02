@@ -1,0 +1,31 @@
+#root { container-type: inline-size; }
+.row { list-style: none; margin: 0; padding: 0 0 4px; display: flex; gap: var(--spacingSmall); overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
+.row::-webkit-scrollbar { display: none; }
+.row li { flex: 0 0 156px; scroll-snap-align: start; display: flex; }
+.item { all: unset; box-sizing: border-box; width: 100%; background: var(--surface); border-radius: var(--shapeRoundedRectLarge); padding: 6px 6px var(--spacingXSmall); display: flex; flex-direction: column; gap: 2px; cursor: pointer; transition: transform .2s var(--ease-std), background .2s; }
+.item:hover { background: var(--surface-inner); }
+.item:active { transform: scale(.97); }
+.item:focus-visible { outline: 3px solid var(--action); outline-offset: 2px; }
+.pic { position: relative; display: block; aspect-ratio: 4 / 3; border-radius: var(--shapeRoundedRectMedium); overflow: hidden; margin-bottom: 4px; background: #0B1230; }
+.pic .illo { position: absolute; inset: 0; }
+.on-pic { position: absolute; left: 9px; bottom: 7px; color: #fff; font-size: var(--textStyleDisplay5); line-height: 1; text-shadow: 0 1px 10px rgba(0,0,0,.5); }
+.on-pic small { display: block; font-size: var(--textStyleLabel1); margin-top: 3px; opacity: .95; }
+.flag { position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; border-radius: 50%; background: var(--bad); color: #1a0c0a; display: grid; place-items: center; }
+.flag svg { width: 13px; height: 13px; }
+.item .gc-status, .leg, .meta { padding: 0 4px; }
+.leg { font-size: var(--textStyleBody3); color: var(--text-primary); white-space: nowrap; }
+.meta { font-size: var(--textStyleBody3); color: var(--text-secondary); }
+.price { color: var(--text-primary); }
+@container (max-width: 420px) { .row li { flex-basis: 46%; } }
+/* Motion: tiles flip up like a departure board, left to right. Then the ones that miss the meeting lose their
+   colour, so the flights that work are the ones that still look alive. */
+.row li { perspective: 900px; }
+@media (prefers-reduced-motion: no-preference) {
+  .row li.tile-in > .item { transform-origin: 50% 100%; animation: f-tile 680ms var(--ease-enter) both; animation-delay: calc(var(--i, 0) * 80ms); }
+  @keyframes f-tile { from { opacity: 0; transform: rotateX(-32deg) translateY(16px); } }
+  .item.miss .pic .illo { animation: f-drain 900ms var(--ease-std) both; animation-delay: calc(var(--i, 0) * 80ms + 900ms); }
+  @keyframes f-drain { to { filter: saturate(.35) brightness(.78); } }
+  .item.ok .gc-status svg { animation: f-ok 520ms cubic-bezier(.2,1.6,.4,1) both; animation-delay: calc(var(--i, 0) * 80ms + 700ms); }
+  @keyframes f-ok { from { transform: scale(0); } }
+}
+@media (prefers-reduced-motion: reduce) { .item.miss .pic .illo { filter: saturate(.35) brightness(.78); } }

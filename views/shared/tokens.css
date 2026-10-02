@@ -1,0 +1,52 @@
+/* GateCue card design system.
+   Structure: Alexa+ MCP add-on design guide (768x480 base canvas, type/spacing/radius tokens, zoom 1.667 on Echo Show).
+   Look: matched to real Alexa+ Echo Show captures (navy sheet, flat cards one step lighter, regular-weight sentence case,
+   inset imagery, Alexa-blue primary action). Every text/background pair below is >= 4.5:1 (checked by script). */
+:root {
+  --textStyleDisplay1: 48px; --textStyleDisplay2: 40px; --textStyleDisplay3: 32px; --textStyleDisplay4: 28px; --textStyleDisplay5: 24px;
+  --textStyleHeadline1: 20px; --textStyleHeadline2: 18px; --textStyleBody1: 16px; --textStyleBody2: 14px; --textStyleBody3: 12px; --textStyleLabel1: 10px;
+  --spacing4XSmall: 2px; --spacing2XSmall: 6px; --spacingXSmall: 8px; --spacingSmall: 12px; --spacingMedium: 16px; --spacingLarge: 20px; --spacingXLarge: 24px;
+  --shapeRoundedRectXSmall: 4px; --shapeRoundedRectSmall: 8px; --shapeRoundedRectMedium: 12px; --shapeRoundedRectLarge: 16px; --shapeCircle: 9999px;
+  --touch-min: 30px; /* x1.667 = 50 device px (Alexa+ minimum 48) */
+  --zoom: 1;
+
+  --surface: #1E3246;        /* card: one step lighter than the Echo Show sheet (#0E1A27) */
+  --surface-inner: #27405A;
+  --surface-sunk: #16273A;
+  --text-primary: #FFFFFF;   /* 13.1:1 */
+  --text-secondary: #C3D0DD; /* 8.4:1 */
+  --text-tertiary: #9DB0C3;  /* 5.9:1 */
+  --action: #2F6BE6;         /* Alexa-blue primary action, white text 4.8:1 */
+  --action-text: #FFFFFF;
+  --chip: #2B4359;           /* Alexa follow-up chip slate */
+  --ok: #5FD68E;             /* 7.2:1 */
+  --warn: #FFB547;           /* 7.5:1 */
+  --bad: #FF8A7A;            /* 5.7:1 */
+  --ok-bg: rgba(95,214,142,.14); --warn-bg: rgba(255,181,71,.14); --bad-bg: rgba(255,138,122,.16);
+  --brand: #FFB547;          /* GateCue mark only */
+  --line: rgba(195,208,221,.18);
+  font-family: "GC Sans", "Amazon Ember", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+:root[data-theme="light"] {
+  --surface: #FFFFFF; --surface-inner: #F1F4F8; --surface-sunk: #FAF9FB;
+  --text-primary: #0F1419; --text-secondary: #4A5563; --text-tertiary: #5F6B7A;
+  --action: #2C63D6; --chip: #E6ECF3;
+  --ok: #1B7A45; --warn: #9A5B00; --bad: #B3261E;
+  --ok-bg: #E7F5EC; --warn-bg: #FFF1DC; --bad-bg: #FDECEA;
+  --line: #E3E7ED;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: transparent; color: var(--text-primary); }
+body { zoom: var(--zoom); -webkit-font-smoothing: antialiased; font-size: var(--textStyleBody1); line-height: 1.35; font-weight: 400; }
+.gc-root { background: var(--surface); border-radius: var(--shapeRoundedRectLarge); padding: var(--spacingMedium); container-type: inline-size; }
+.gc-num { font-variant-numeric: tabular-nums; }
+.gc-attrib { display: flex; align-items: center; gap: var(--spacing2XSmall); font-size: var(--textStyleBody3); color: var(--text-secondary); margin: 0 0 var(--spacingXSmall) 2px; }
+.gc-attrib svg { width: 14px; height: 14px; }
+.gc-btn { min-height: var(--touch-min); padding: 0 var(--spacingMedium); border-radius: var(--shapeCircle); border: 0; font: inherit; font-size: var(--textStyleBody2); cursor: pointer; background: var(--chip); color: var(--text-primary); display: inline-flex; align-items: center; justify-content: center; gap: var(--spacing2XSmall); }
+.gc-btn.primary { background: var(--action); color: var(--action-text); }
+.gc-btn:focus-visible { outline: 3px solid var(--action); outline-offset: 2px; }
+.gc-btn svg { width: 16px; height: 16px; }
+.gc-status { display: inline-flex; align-items: center; gap: 5px; font-size: var(--textStyleBody3); color: var(--text-secondary); }
+.gc-status svg { width: 14px; height: 14px; }
+.gc-status.ok { color: var(--ok); } .gc-status.warn { color: var(--warn); } .gc-status.bad { color: var(--bad); }
+.ampm { font-size: .42em; margin-left: .12em; letter-spacing: .03em; }

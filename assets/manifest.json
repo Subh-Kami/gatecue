@@ -1,0 +1,90 @@
+{
+ "airfield": {
+  "day": {
+   "w": 2400,
+   "h": 1792,
+   "img": "img/airfield-day-img-bb671381.webp",
+   "sm": "img/airfield-day-sm-6949b939.webp"
+  },
+  "dusk": {
+   "w": 2400,
+   "h": 1792,
+   "img": "img/airfield-dusk-img-897be6eb.webp",
+   "sm": "img/airfield-dusk-sm-170b81ae.webp"
+  },
+  "golden": {
+   "w": 2400,
+   "h": 1792,
+   "img": "img/airfield-golden-img-365105b3.webp",
+   "sm": "img/airfield-golden-sm-35313b44.webp",
+   "video": "video/airfield-golden-6fc34a5b.mp4"
+  },
+  "morning": {
+   "w": 2400,
+   "h": 1792,
+   "img": "img/airfield-morning-img-3cce5289.webp",
+   "sm": "img/airfield-morning-sm-940e6828.webp"
+  },
+  "night": {
+   "w": 2400,
+   "h": 1792,
+   "img": "img/airfield-night-img-c192162c.webp",
+   "sm": "img/airfield-night-sm-bfae8fae.webp"
+  },
+  "predawn": {
+   "w": 2400,
+   "h": 1792,
+   "img": "img/airfield-predawn-img-49142c9d.webp",
+   "sm": "img/airfield-predawn-sm-df6357fa.webp",
+   "video": "video/airfield-predawn-249c0086.mp4"
+  }
+ },
+ "city": {
+  "morning": {
+   "w": 2400,
+   "h": 1792,
+   "img": "img/city-morning-img-8ac359df.webp",
+   "sm": "img/city-morning-sm-6cb4a7a0.webp"
+  }
+ },
+ "home": {
+  "night": {
+   "w": 2400,
+   "h": 1792,
+   "img": "img/home-night-img-41271b79.webp",
+   "sm": "img/home-night-sm-e56c95ad.webp",
+   "video": "video/home-night-90fe45b7.mp4"
+  },
+  "predawn": {
+   "w": 2400,
+   "h": 1792,
+   "img": "img/home-predawn-img-c9c5b8a5.webp",
+   "sm": "img/home-predawn-sm-b39162fd.webp",
+   "video": "video/home-predawn-575bd8d9.mp4"
+  }
+ },
+ "journey": {
+  "pano": {
+   "w": 3168,
+   "h": 1344,
+   "img": "img/journey-pano-img-5c42a2ad.webp",
+   "sm": "img/journey-pano-sm-c39a3943.webp"
+  }
+ },
+ "sprite": {
+  "plane": {
+   "w": 1053,
+   "h": 270,
+   "img": "img/sprite-plane-img-135f8e9b.webp"
+  }
+ },
+ "terminal": {
+  "dawn": {
+   "w": 2400,
+   "h": 1792,
+   "img": "img/terminal-dawn-img-99ccdfe2.webp",
+   "sm": "img/terminal-dawn-sm-63fd2b2a.webp",
+   "video": "video/terminal-dawn-8fcc58fa.mp4"
+  }
+ }
+}

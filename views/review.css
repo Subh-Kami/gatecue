@@ -1,0 +1,46 @@
+#root { container-type: inline-size; }
+.split { display: grid; grid-template-columns: 250px 1fr; gap: var(--spacingLarge); padding: var(--spacingXSmall); }
+.pic { position: relative; border-radius: var(--shapeRoundedRectMedium); overflow: hidden; min-height: 200px; background: #0B1230; }
+.pic .illo { position: absolute; inset: 0; }
+.on-pic { position: absolute; left: 14px; right: 14px; bottom: 12px; color: #fff; text-shadow: 0 1px 10px rgba(0,0,0,.35); }
+.when { font-size: var(--textStyleHeadline2); }
+.hero { font-size: var(--textStyleDisplay1); line-height: 1; display: block; margin: 2px 0 3px; }
+.hero .ampm { font-size: .5em; }
+.miss .hero .ampm { background: var(--bad); color: #1a0c0a; text-shadow: none; padding: 1px 6px; border-radius: 6px; margin-left: 6px; }
+.rel { font-size: var(--textStyleBody3); opacity: .95; }
+.info { padding: var(--spacingXSmall) var(--spacingXSmall) var(--spacingXSmall) 0; display: flex; flex-direction: column; gap: var(--spacing2XSmall); }
+.verdict { display: flex; align-items: center; gap: 7px; font-size: var(--textStyleBody2); padding: 6px 10px; border-radius: var(--shapeRoundedRectSmall); align-self: flex-start; }
+.verdict svg { width: 16px; height: 16px; flex: none; }
+.verdict.ok { color: var(--ok); background: var(--ok-bg); } .verdict.bad { color: var(--bad); background: var(--bad-bg); }
+.title { font-size: var(--textStyleDisplay5); display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.title .arr svg { width: 16px; height: 16px; color: var(--text-tertiary); display: block; transform: translateY(1px); }
+.title .fn { font-size: var(--textStyleBody2); color: var(--text-secondary); margin-left: 4px; }
+.rows { margin: 0; }
+.rows > div { display: flex; justify-content: space-between; align-items: center; gap: var(--spacingSmall); padding: 6px 0; border-top: 1px solid var(--line); font-size: var(--textStyleBody2); }
+.rows dt { display: flex; align-items: center; gap: 8px; color: var(--text-secondary); }
+.rows dt svg { width: 16px; height: 16px; flex: none; }
+.rows dd { margin: 0; text-align: right; font-size: var(--textStyleBody1); }
+.rows .ok { color: var(--ok); } .rows .bad, .rows .badt { color: var(--bad); }
+.rows .total { font-size: var(--textStyleHeadline1); }
+.actions { display: flex; gap: var(--spacingXSmall); justify-content: flex-end; margin-top: auto; }
+@container (max-width: 520px) {
+  .split { grid-template-columns: 1fr; gap: var(--spacingSmall); }
+  .pic { min-height: 150px; }
+  .info { padding: 0 4px 4px; }
+  .actions { flex-direction: column-reverse; } .actions .gc-btn { width: 100%; }
+}
+/* Motion: the verdict is the point of this card, so it sweeps in as a colour wash right after the time lands.
+   A miss also drains the colour from the picture: the flight that doesn't work stops looking inviting. */
+@media (prefers-reduced-motion: no-preference) {
+  .verdict { clip-path: inset(0 100% 0 0 round 8px); animation: v-sweep 620ms var(--ease-enter) 760ms forwards; }
+  @keyframes v-sweep { to { clip-path: inset(0 0 0 0 round 8px); } }
+  .verdict svg { animation: v-icon 520ms cubic-bezier(.2,1.6,.4,1) 980ms both; }
+  @keyframes v-icon { from { transform: scale(0) rotate(-40deg); } }
+  .miss .pic .illo { animation: v-drain 900ms var(--ease-std) 900ms both; }
+  @keyframes v-drain { to { filter: saturate(.45) brightness(.8); } }
+  .miss .hero .ampm { animation: stamp 560ms cubic-bezier(.2,1.5,.35,1) var(--stamp, 420ms) both, v-shake 420ms ease-in-out 1300ms 1; }
+  @keyframes v-shake { 20%, 60% { transform: translateX(-3px); } 40%, 80% { transform: translateX(3px); } }
+  .title { animation: t-in 520ms var(--ease-enter) 260ms both; }
+  @keyframes t-in { from { opacity: 0; transform: translateX(-8px); } }
+}
+@media (prefers-reduced-motion: reduce) { .miss .pic .illo { filter: saturate(.45) brightness(.8); } }

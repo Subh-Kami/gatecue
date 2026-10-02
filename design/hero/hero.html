@@ -1,0 +1,35 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="fonts.css"><style>
+html,body{margin:0;background:#070C16;font-family:"GC Sans",system-ui;color:#fff}
+.hero{position:relative;width:1600px;height:720px;overflow:hidden}
+#bg,#bg .scene{position:absolute;inset:0;width:100%;height:100%}
+#bg .scene{height:100%}
+.shade{position:absolute;inset:0;background:linear-gradient(90deg,rgba(5,9,18,.9) 0%,rgba(5,9,18,.7) 36%,rgba(5,9,18,.12) 66%,rgba(5,9,18,.2) 100%),linear-gradient(0deg,rgba(5,9,18,.55),transparent 40%)}
+.copy{position:absolute;left:80px;top:96px;width:640px}
+.brand{display:flex;align-items:center;gap:20px}.brand svg{width:58px;height:64px}
+.name{font-size:78px;font-weight:600;letter-spacing:-.02em}
+.tag{font-size:30px;line-height:1.3;color:#DCE7F4;margin:22px 0 34px}
+.feat{display:grid;gap:16px}
+.feat div{display:flex;gap:14px;align-items:center;font-size:23px;color:#EAF1FA}
+.feat i{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;font-style:normal;flex:none}
+.feat svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.b1{background:#2F6BE6}.b2{background:rgba(255,138,122,.18);color:#FF8A7A}.b3{background:rgba(255,181,71,.18);color:#FFB547}.b4{background:rgba(95,214,142,.16);color:#5FD68E}
+.badge{position:absolute;left:80px;bottom:56px;display:flex;gap:10px}
+.badge span{font-size:17px;padding:8px 14px;border-radius:99px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);color:#C9D6E6}
+.device{position:absolute;right:70px;top:84px;width:780px;padding:22px;border-radius:30px;background:linear-gradient(160deg,#1c1f24,#08090b 45%);box-shadow:0 40px 90px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.06) inset;transform:perspective(2000px) rotateY(-10deg) rotateX(3deg)}
+.device img{display:block;width:100%;border-radius:10px}
+.phone{position:absolute;right:760px;top:330px;width:240px;display:none}
+</style></head><body><div class="hero"><div id="bg"><img src="pano.jpg" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 70%"></div><div class="shade"></div>
+<div class="copy">
+ <div class="brand"><svg viewBox="0 0 22 24"><path d="M3 21V10a8 8 0 0 1 16 0v11" fill="none" stroke="#FFB547" stroke-width="2.6" stroke-linecap="round"/><circle cx="11" cy="15" r="2.8" fill="#FFB547"/></svg><span class="name">GateCue</span></div>
+ <div class="tag">An Alexa+ travel co-pilot that plans your day backwards from the flight, and checks the clock before you pay.</div>
+ <div class="feat">
+  <div><i class="b1"><svg viewBox="0 0 24 24"><path d="M5 16h14M6 16l1.5-5h9L18 16M6 16v3M18 16v3"/></svg></i>Leave-home time, ride and food stop in one plan</div>
+  <div><i class="b2"><svg viewBox="0 0 24 24"><path d="M12 3l9.5 17h-19z"/><path d="M12 10v4M12 17.5v.01"/></svg></i>Catches the AM/PM mistake before checkout</div>
+  <div><i class="b3"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></i>Watches check-in and nudges you to go</div>
+  <div><i class="b4"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18M7 15h4"/></svg></i>Pays in the conversation, with a secure checkout</div>
+ </div>
+</div>
+<div class="badge"><span>MCP 2025-11-25</span><span>MCP Apps cards</span><span>Elicitation + Tasks</span><span>Echo Show · phone · voice</span></div>
+<div class="device"><img src="01-plan-screen.png"></div>
+<div id="mini" style="display:none"></div>
+</div></body></html>

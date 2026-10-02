@@ -1,0 +1,48 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="fonts.css"><style>
+html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#05080E;font-family:"GC",system-ui;color:#fff}
+.L{position:absolute;inset:0;overflow:hidden;opacity:0;will-change:transform,opacity}
+.fill{position:absolute;inset:0}
+img.cover{position:absolute;width:100%;height:100%;object-fit:cover}
+.center{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+/* A: hook */
+#A .bg img{filter:saturate(1.1)}
+#A .dim{position:absolute;inset:0;background:radial-gradient(900px 600px at 50% 50%,rgba(5,8,14,.25),rgba(5,8,14,.85))}
+.clock{font-weight:900;font-size:440px;letter-spacing:-.04em;line-height:1;font-variant-numeric:tabular-nums;display:flex;align-items:center;gap:40px}
+#aNum{display:inline-block}
+.pill{font-size:150px;font-weight:800;padding:18px 44px 24px;border-radius:40px;line-height:1;background:#fff;color:#0B1522;transform-origin:50% 50%;backface-visibility:hidden}
+.pill.pm{background:#FF4F43;color:#1A0705}
+.ghost{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;mix-blend-mode:screen}
+.cap{position:absolute;left:0;right:0;bottom:120px;text-align:center;font-size:54px;font-weight:600;letter-spacing:.02em}
+/* B: kinetic type */
+.word{position:absolute;left:120px;top:50%;transform:translateY(-50%);font-weight:900;font-style:italic;font-size:300px;line-height:.9;letter-spacing:-.03em;white-space:nowrap}
+.word span{display:inline-block}
+.stripe{position:absolute;width:3000px;height:140px;left:-500px;top:0;transform-origin:0 0}
+/* C: shapes */
+#C{background:#0A1322}
+/* D: skies */
+.clock2{position:absolute;left:110px;bottom:80px;font-weight:900;font-size:230px;letter-spacing:-.03em;line-height:1;font-variant-numeric:tabular-nums;text-shadow:0 10px 60px rgba(0,0,0,.35)}
+.clock2 small{font-size:.42em;font-weight:800;margin-left:18px;letter-spacing:0}
+.label{position:absolute;left:118px;top:92px;font-size:36px;font-weight:800;letter-spacing:.32em;text-transform:uppercase}
+/* E: pano */
+#cam{position:absolute;left:0;top:0;width:3800px;height:1612px;transform-origin:0 0}
+.stack{position:absolute;left:110px;top:90px;font-weight:900;font-size:150px;line-height:.92;letter-spacing:-.03em;text-transform:uppercase}
+.stack div{overflow:hidden}.stack span{display:block}
+.chip{position:absolute;padding:14px 24px;border-radius:999px;background:rgba(6,12,24,.72);backdrop-filter:blur(10px);font-size:34px;font-weight:600;white-space:nowrap;transform-origin:0 50%}
+.chip b{font-weight:800;margin-right:10px}
+/* F: product */
+#F{background:radial-gradient(1200px 700px at 60% 60%,#12305A 0%,#081226 45%,#04070D 100%)}
+.dev{position:absolute;left:800px;top:215px;width:960px;height:625px;border-radius:44px;padding:26px;background:linear-gradient(160deg,#23272e,#0a0b0d 45%);box-shadow:0 60px 140px rgba(0,0,0,.7),0 0 0 2px rgba(255,255,255,.05) inset;transform-style:preserve-3d}
+.dev .scr{position:relative;width:100%;height:100%;border-radius:12px;overflow:hidden;background:#0E1A27}
+.dev .scr img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.bar{position:absolute;left:26px;right:26px;bottom:26px;height:8px;border-radius:0 0 12px 12px;background:linear-gradient(90deg,#0B3F7A,#1F6FE0,#12C3EE,#7BE7FF,#12C3EE,#1F6FE0,#0B3F7A);background-size:200% 100%}
+.verb{position:absolute;left:96px;top:370px;font-weight:900;font-size:148px;letter-spacing:-.03em;line-height:1;color:transparent;-webkit-text-stroke:3px rgba(255,255,255,.9)}
+.verbsub{position:absolute;left:102px;top:560px;font-size:40px;font-weight:600;color:#C9D8EA;max-width:640px;line-height:1.25}
+/* G: end */
+#G{background:radial-gradient(900px 520px at 50% 46%,#152A4A 0%,#070D19 60%,#04070D 100%)}
+.word2{font-weight:800;font-size:220px;letter-spacing:-.035em;line-height:1}
+.word2 span{display:inline-block}
+.tag{position:absolute;left:0;right:0;top:700px;text-align:center;font-size:52px;font-weight:500;color:#E6EEF8}
+.small{position:absolute;left:0;right:0;top:790px;text-align:center;font-size:30px;font-weight:600;letter-spacing:.28em;text-transform:uppercase;color:#FFB547}
+#flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:50}
+#grain{position:absolute;inset:0;pointer-events:none;z-index:40;opacity:.06;mix-blend-mode:overlay}
+</style></head><body><main id="root"></main><script src="reel.js"></script></body></html>

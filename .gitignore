@@ -1,0 +1,26 @@
+# dependencies and builds
+node_modules/
+dist/
+*.log
+.DS_Store
+
+# secrets and local data (AeroDataBox responses are cached here and are not redistributed)
+.env
+data/
+
+# working folders
+_sync/
+_to_delete/
+
+# large design working files (masters used by the build stay in design/illo/src)
+design/raw/
+design/illo/raw/
+design/illo/*.png
+design/*/frames/
+design/reel/a/
+design/reel/*.wav
+*.mp4
+!assets/video/*.mp4
+*.webm
+design/**/snap-*.png
+design/harness/*.png
