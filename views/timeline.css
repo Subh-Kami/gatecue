@@ -14,7 +14,7 @@
 .steps .dot { grid-row: span 2; width: 26px; height: 26px; border-radius: var(--shapeCircle); background: var(--surface-inner); display: grid; place-items: center; color: var(--text-secondary); }
 .steps .dot svg { width: 14px; height: 14px; }
 .steps .t { font-size: var(--textStyleHeadline2); line-height: 1.1; }
-.steps .l { font-size: var(--textStyleBody3); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.steps .l { font-size: var(--textStyleBody3); color: var(--text-secondary); line-height: 1.25; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
 .steps .leave .dot { background: var(--action); color: #fff; }
 .steps .cutoff .dot { background: var(--warn-bg); color: var(--warn); } .steps .cutoff .l { color: var(--warn); }
 .steps .goal .dot { background: var(--ok-bg); color: var(--ok); }

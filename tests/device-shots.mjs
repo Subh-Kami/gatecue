@@ -10,6 +10,7 @@ const srv = createServer((req, res) => {
   let b; try { b = readFileSync(p); } catch { res.writeHead(404); res.end(); return; }
   res.writeHead(200, { "content-type": types[extname(p)] ?? "text/plain" }); res.end(b);
 }).listen(5174);
+// Run against a demo server with a fast clock so the check-in nudge arrives in time: GATECUE_DEMO_SPEEDUP=20 npm run serve:demo
 const BASE = process.env.BASE ?? "http://localhost:8787";
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined });
 const only = process.argv[2];
@@ -19,7 +20,7 @@ const runs = [
   { name: "03-ride-booked", device: "echo-show-8", scene: "night", script: ["Book the ride"], confirmModal: true },
   { name: "04-nudge", device: "echo-show-8", script: ["Watch my check-in time"], waitNudge: true },
   { name: "05-options", device: "echo-show-8", script: ["My flight got cancelled"] },
-  { name: "06-review-ok", device: "echo-show-8", script: ["Show me flights", "Review UA 499 at 7:11 AM"] },
+  { name: "06-review-ok", device: "echo-show-8", script: ["Show me flights", "Review BL 499 at 7:11 AM"] },
   { name: "07-pm-trap", device: "echo-show-8", script: ["Just book the 6 o'clock"] },
   { name: "08-ack-sheet", device: "echo-show-8", script: ["Just book the 6 o'clock", "Book it anyway"], modal: true },
   { name: "09-phone-trap", device: "mobile", script: ["Just book the 6 o'clock"] },
@@ -37,9 +38,10 @@ for (const r of runs) {
   await page.goto(url);
   if (r.modal || r.confirmModal) {
     await page.waitForSelector("#modal:not([hidden]) .sheet2", { timeout: 30000 });
+    page.on("popup", (pp) => pp.close().catch(() => {}));
     await page.waitForTimeout(700);
     if (r.confirmModal) {
-      await page.click("#modal button[type=submit]");
+      await page.click("#modal #go, #modal button[type=submit]");
       await page.waitForSelector("body[data-script-done='1']", { timeout: 30000 });
       await page.waitForTimeout(2200);
     }

@@ -7,6 +7,7 @@ import { CallToolResultSchema, ElicitRequestSchema } from "@modelcontextprotocol
 import { AppBridge, PostMessageTransport } from "@modelcontextprotocol/ext-apps/app-bridge";
 import { route, SCENARIO, type RouterState, type Step } from "./router.js";
 import { sayP, THINKING, intro, handOffClock, tripGlance } from "./motion.js";
+import { consent, bareClock } from "./consent.js";
 
 type Device = "echo-show-8" | "echo-show-15" | "mobile" | "voice";
 const DEVICES: Record<Device, { label: string; w: number; h: number }> = {
@@ -17,10 +18,13 @@ const DEVICES: Record<Device, { label: string; w: number; h: number }> = {
 };
 
 const q = new URLSearchParams(location.search);
-const SERVER = q.get("server") ?? "http://localhost:8787";
+// The GateCue server: the one that served this page, unless ?server= points elsewhere (tests, a separate dev host).
+const SERVER = q.get("server") ?? location.origin;
 let device = (q.get("device") as Device) ?? (window.innerWidth < 640 || (window.innerWidth < 900 && window.innerHeight > window.innerWidth * 1.2) ? "mobile" : "echo-show-8");
 let theme: "dark" | "light" = (q.get("theme") as any) ?? "dark";
-const speak = q.get("speak") === "1";
+// Alexa's voice: Amazon Polly through the GateCue server, or the browser's voice if Polly isn't available.
+// On by default, except for scripted runs (tests, recordings); the header button toggles it.
+let voiceOn = q.get("speak") === "1" || (!q.get("script") && q.get("voice") !== "0");
 
 const $ = <T extends HTMLElement>(s: string) => document.querySelector(s) as T;
 const screen = $<HTMLDivElement>("#screen");
@@ -89,8 +93,8 @@ function wake() { if (!document.body.classList.contains("awake")) { handOffClock
 function chipsFor(tool: string, sc: any): string[] {
   switch (tool) {
     case "plan_trip": return ["Book the ride", "Email me the plan", "Watch my check-in time"];
-    case "book_ride": return ["Watch my check-in time"];
-    case "watch_trip": return ["My flight got cancelled"];
+    case "book_ride": return sc?.status === "handed_off" ? ["Watch my check-in time", "Email me the plan"] : ["Book the ride"];
+    case "watch_trip": return sc?.kind === "change" ? (sc.change === "cancelled" || sc.makesGoal === false ? ["Show me flights that make it"] : ["Email me the plan"]) : ["My flight got cancelled"];
     case "search_flights": return sc?.options?.length ? [`Review ${sc.options[0].flight.number} at ${sc.options[0].check.departureDisplay}`, "Just book the 6 o'clock"] : [];
     case "review_flight": return sc?.check?.makesGoal ? ["Book it", "Other flights"] : ["Flights that make it", "Book it anyway"];
     default: return [];
@@ -107,6 +111,77 @@ function followups(turn: HTMLElement, chips: string[]) {
   row.querySelectorAll<HTMLButtonElement>(".chip").forEach((b) => b.addEventListener("click", () => handleUtterance(b.textContent ?? "", "tap")));
   turn.appendChild(row);
 }
+let audio: HTMLAudioElement | undefined;
+let pollyOK = true;
+const speechQueue: Array<() => Promise<void>> = [];
+let speechBusy = false;
+// queue=true: wait for the current sentence (a follow-up after a card); otherwise interrupt it.
+async function speakText(text: string, notify = false, queue = false) {
+  if (!voiceOn || !text.trim()) return;
+  const job = () => sayAloud(text, notify);
+  if (!queue) { speechQueue.length = 0; audio?.pause(); if ("speechSynthesis" in window) speechSynthesis.cancel(); speechBusy = false; }
+  speechQueue.push(job);
+  if (speechBusy) return;
+  speechBusy = true;
+  while (speechQueue.length) await speechQueue.shift()!().catch(() => {});
+  speechBusy = false;
+}
+async function sayAloud(text: string, notify: boolean): Promise<void> {
+  if (pollyOK) {
+    try {
+      const r = await fetch(new URL("/sim/speak", SERVER), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text }) });
+      if (!r.ok) throw new Error(String(r.status));
+      const url = URL.createObjectURL(await r.blob());
+      await new Promise<void>((done) => {
+        audio = new Audio(url);
+        audio.onplay = () => speaking(true, notify);
+        audio.onended = audio.onpause = audio.onerror = () => { speaking(false); URL.revokeObjectURL(url); done(); };
+        audio.play().catch(() => done());
+      });
+      return;
+    } catch { pollyOK = false; } // fall back to the browser voice for the rest of the session
+  }
+  if (!("speechSynthesis" in window)) return;
+  await new Promise<void>((done) => {
+    const u = Object.assign(new SpeechSynthesisUtterance(text), { rate: 1.05 });
+    u.onstart = () => speaking(true, notify);
+    u.onend = u.onerror = () => { speaking(false); done(); };
+    speechSynthesis.speak(u);
+  });
+}
+
+// Push-to-talk: the browser's speech recognition turns what you say into the utterance (Chrome, Edge, Safari).
+function wireMic() {
+  const SR: any = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition;
+  const btn = document.querySelector<HTMLButtonElement>("#mic");
+  if (!btn) return;
+  if (!SR) { btn.hidden = true; return; }
+  let rec: any = null;
+  btn.addEventListener("click", () => {
+    if (rec) { rec.stop(); return; }
+    audio?.pause(); if ("speechSynthesis" in window) speechSynthesis.cancel();
+    rec = new SR();
+    rec.lang = "en-US"; rec.interimResults = true; rec.maxAlternatives = 1;
+    const cap = $("#caption");
+    wake();
+    document.body.classList.add("listening", "mic-on"); btn.setAttribute("aria-pressed", "true");
+    cap.textContent = "Listening…"; cap.classList.add("on");
+    let final = "";
+    rec.onresult = (e: any) => {
+      let interim = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) { const t = e.results[i][0].transcript; if (e.results[i].isFinal) final += t; else interim += t; }
+      cap.textContent = `“${(final + interim).trim()}”`;
+    };
+    rec.onend = () => {
+      document.body.classList.remove("listening", "mic-on"); btn.setAttribute("aria-pressed", "false"); rec = null;
+      const said = final.trim();
+      if (said) void handleUtterance(said, "voice"); else cap.classList.remove("on");
+    };
+    rec.onerror = () => { cap.textContent = "I didn't catch that."; };
+    rec.start();
+  });
+}
+
 function speaking(on: boolean, notify = false) {
   document.body.dataset.speaking = on && !notify ? "1" : "0";
   document.body.dataset.notify = on && notify ? "1" : "0";
@@ -134,15 +209,16 @@ function applyDevice() {
   document.documentElement.dataset.theme = theme;
   screen.style.width = `${d.w}px`;
   screen.style.height = `${d.h}px`;
-  // Fit the device into whatever space the stage has (the header wraps on narrow windows). zoom, unlike
-  // transform, changes the layout box, so the scaled device stays centred at every window size.
+  // Fit the device into whatever space the stage has (the header wraps on narrow windows). This is a transform,
+  // not CSS zoom: Safari carries an ancestor's zoom into iframe documents, which shrank every card inside its
+  // frame (leaving a blank strip beside it). The stage centres the frame and the scale is about its centre.
   const stage = frame.parentElement!;
   const pad = window.innerWidth < 700 ? 12 : 32;
   const availW = stage.clientWidth - pad * 2, availH = stage.clientHeight - pad * 2;
   const bezel = device === "mobile" ? 36 : 60;
   const s = Math.max(.2, Math.min(1, availW / (d.w + bezel), availH / (d.h + bezel)));
-  frame.style.transform = "";
-  (frame.style as any).zoom = String(s);
+  (frame.style as any).zoom = "";
+  frame.style.transform = s < 1 ? `scale(${s})` : "";
   frame.style.width = `${d.w + bezel}px`;
   frame.style.height = `${d.h + bezel}px`;
   document.querySelectorAll<HTMLButtonElement>("[data-device]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.device === device)));
@@ -167,10 +243,7 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 
 function alexaSays(text: string) {
   add(sayP(text), "alexa");
-  if (speak && "speechSynthesis" in window) {
-    speechSynthesis.cancel();
-    speechSynthesis.speak(Object.assign(new SpeechSynthesisUtterance(text), { rate: 1.05 }));
-  }
+  void speakText(text);
 }
 
 async function renderCard(toolName: string, args: any, result: any, container: HTMLElement, mode: "inline" | "fullscreen" = "inline") {
@@ -185,7 +258,8 @@ async function renderCard(toolName: string, args: any, result: any, container: H
   container.appendChild(iframe);
   const bridge = new AppBridge(client, { name: "GateCue Alexa+ Simulator", version: "0.2.0" }, { openLinks: {}, serverTools: {}, logging: {}, message: { text: {} } } as any, { hostContext: hostContext(mode, tool) });
   bridges.add(bridge);
-  bridge.onsizechange = ({ height }) => { if (height && mode === "inline") iframe.style.height = `${Math.ceil(height)}px`; };
+  // The card reports its content height in both modes; in full screen the overlay scrolls when the card is taller.
+  bridge.onsizechange = ({ height }) => { if (height) iframe.style.height = `${Math.ceil(height)}px`; };
   bridge.onmessage = async ({ content }) => {
     const text = (content as any[]).filter((c) => c.type === "text").map((c) => c.text).join(" ");
     if (text) void handleUtterance(text, "tap");
@@ -240,7 +314,9 @@ async function callTool(name: string, args: any, quiet = false, background = fal
   try {
     result = await client.callTool({ name, arguments: args }, CallToolResultSchema, { timeout: 15 * 60_000 });
   } catch (e: any) {
-    turn.innerHTML = sayP(`Something went wrong. ${e?.message ?? ""}`);
+    const timedOut = /timed out|-32001/i.test(String(e?.message));
+    turn.innerHTML = sayP(timedOut ? "I closed that because there was no answer. Ask me again when you're ready." : "Sorry, that didn't work. Try again in a moment.");
+    console.error(`[tool] ${name}:`, e?.message ?? e);
     document.body.classList.remove("is-thinking");
     speaking(false);
     return { isError: true, content: [{ type: "text", text: `The tool call failed: ${e?.message ?? "unknown error"}` }] };
@@ -249,7 +325,7 @@ async function callTool(name: string, args: any, quiet = false, background = fal
   $("#caption").classList.remove("on");
   document.body.classList.remove("is-thinking");
   turn.innerHTML = sayP(text);
-  if (speak && "speechSynthesis" in window) { speechSynthesis.cancel(); speechSynthesis.speak(new SpeechSynthesisUtterance(text)); }
+  void speakText(text);
   setTimeout(() => speaking(false), Math.min(6000, 60 * text.length));
   const sc = result.structuredContent;
   if (name === "search_flights" && sc?.options) state.lastOptions = sc.options;
@@ -259,21 +335,26 @@ async function callTool(name: string, args: any, quiet = false, background = fal
   return result;
 }
 
-async function watch(args: any) {
-  const turn = add(sayP("I'll watch your check-in time and tell you when to move."), "alexa watching");
-  lastTurn = turn;
-  followups(turn, []);
+async function watch(args: any, rearm = false) {
+  if (!rearm) {
+    const turn = add(sayP(args.flightNumber ? `I'll watch your check-in time and ${args.flightNumber}, and tell you if anything changes.` : "I'll watch your check-in time and tell you when to move."), "alexa watching");
+    lastTurn = turn;
+    followups(turn, []);
+  }
   const stream = client.experimental.tasks.callToolStream({ name: "watch_trip", arguments: args }, CallToolResultSchema, { task: { ttl: 60 * 60_000 } } as any);
   for await (const m of stream as any) {
     if (m.type === "result") {
       const text = m.result.content[0].text;
       const t = add(sayP(text), "alexa proactive");
       speaking(true, true);
-      if (speak && "speechSynthesis" in window) speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+      void speakText(text, true);
       await renderCard("watch_trip", args, m.result, t);
       followups(t, chipsFor("watch_trip", m.result.structuredContent));
       setTimeout(() => speaking(false), 5000);
       document.body.dataset.nudged = "1";
+      // A delay or gate change doesn't end the trip: keep watching from the new state.
+      const sc = m.result.structuredContent;
+      if (sc?.kind === "change" && sc.change !== "cancelled") void watch(args, true);
     }
   }
 }
@@ -294,11 +375,20 @@ async function handleUtterance(text: string, via: "voice" | "tap" = "voice") {
   showUtterance(text, via);
   if (brain.provider !== "scripted") return agentTurn(text);
   const steps: Step[] = route(text, state);
+  let quietText = "";
   for (const s of steps) {
     if ("say" in s) { alexaSays(s.say); continue; }
     const args = { ...s.args };
-    if (args.optionId === "$firstOption") args.optionId = state.lastOptions[0]?.id;
-    await callTool(s.tool, args, (s as any).quiet);
+    if (args.optionId === "$firstOption") {
+      args.optionId = state.lastOptions[0]?.id;
+      // Nothing matched (e.g. no flights left): say what the search said instead of failing the review.
+      if (!args.optionId) { alexaSays(quietText || "I couldn't find that flight. Want me to show you the flights that are left?"); continue; }
+    }
+    const r: any = await callTool(s.tool, args, (s as any).quiet);
+    if ((s as any).quiet) {
+      quietText = (r?.content ?? []).filter((c: any) => c.type === "text").map((c: any) => c.text).join(" ");
+      if (r?.isError) state.lastOptions = [];
+    }
   }
 }
 
@@ -310,7 +400,15 @@ function agentTurn(text: string): Promise<void> {
   agentBusy = run;
   return run;
 }
+// Which agent turn each flight review was shown in: a flight can be paid for only in a later turn, after the
+// traveller has seen its review card and said to book it.
+let agentTurnNo = 0;
+const reviewedIn = new Map<string, number>();
 async function agentLoop(text: string) {
+  const turnNo = ++agentTurnNo;
+  const lastAlexa = [...transcript].reverse().find((m) => m.role === "assistant" && m.text)?.text ?? "";
+  const clock = bareClock(text); // "the 6 o'clock": no AM or PM given
+  let searchedAround = false, endTurn = false;
   transcript.push({ role: "user", text });
   let toolTurn: HTMLElement | undefined; // the card this turn produced, if any
   for (let step = 0; step < 6; step++) {
@@ -332,26 +430,54 @@ async function agentLoop(text: string) {
       return;
     }
     document.body.classList.remove("is-thinking");
-    const said = (out.text ?? "").trim();
+    const full = (out.text ?? "").trim();
+    let said = full;
+    // A card already spoke this turn's answer. Models like to restate it (times and all), which doubles the
+    // reply on a voice device. After a card, keep questions and short new remarks; drop restatements.
+    // If the card already asked the traveller something, a second question from the model only repeats it.
+    const cardAsked = /\?\s*$/.test(toolTurn?.querySelector(".say-text")?.textContent ?? "");
+    if (toolTurn && said && (cardAsked || (!/\?\s*$/.test(said) && (/\b\d{1,2}:\d{2}\b|\b\d{1,2}\s?(AM|PM)\b/i.test(said) || said.length > 140)))) {
+      console.info("[agent] dropped a restatement after the card"); said = "";
+    }
     const calls = out.toolCalls ?? [];
-    if (said || calls.length) transcript.push({ role: "assistant", text: said || undefined, toolCalls: calls.length ? calls : undefined, raw: out.raw });
+    if (full || calls.length) transcript.push({ role: "assistant", text: full || undefined, toolCalls: calls.length ? calls : undefined, raw: out.raw });
     if (said) {
       if (pending) { pending.innerHTML = sayP(said); lastTurn = pending; followups(pending, []); }
       else if (toolTurn) toolTurn.querySelector(".say-text")?.insertAdjacentHTML("afterend", sayP(said, "add"));
       else alexaSays(said);
-      if (speak && "speechSynthesis" in window && (pending || toolTurn)) speechSynthesis.speak(new SpeechSynthesisUtterance(said));
+      if (pending || toolTurn) void speakText(said, false, !!toolTurn);
     } else pending?.remove();
     if (!calls.length) { setTimeout(() => speaking(false), Math.min(5000, 60 * said.length)); return; }
     const results = [];
     for (const c of calls) {
+      const hold = (why: string) => { console.info(`[agent] held back ${c.name}: ${why}`); results.push({ id: c.id, name: c.name, text: why, isError: true }); };
+      if (endTurn) { hold("Not done: the turn ended. Wait for the traveller."); continue; }
+      // Actions on the traveller's behalf need to have been asked for (see consent.ts).
+      const gate = consent(c.name, text, lastAlexa);
+      if (!gate.ok) { hold(gate.reason); continue; }
+      // A clock time with no AM or PM: search around it first, so both halves of the day are on the card.
+      if (clock && c.name === "search_flights") { c.args = { ...c.args, departsAround: (c.args as any).departsAround ?? clock }; searchedAround = true; }
+      if (clock && !searchedAround && (c.name === "review_flight" || c.name === "book_flight")) {
+        hold(`Not done: the traveller said "${clock}" without AM or PM. First call search_flights with departsAround "${clock}" so they see the morning and evening flights side by side, then review_flight on the flight the search names first.`);
+        continue;
+      }
+      if (c.name === "book_flight") {
+        const seen = reviewedIn.get(String((c.args as any).quoteId));
+        if (seen === undefined || seen === turnNo) { hold("Not booked: the traveller hasn't seen this flight's review yet. Show it with review_flight and let them say to book it."); continue; }
+      }
       const silent = SILENT_TOOLS.has(c.name);
       const before = lastTurn;
       const r: any = await callTool(c.name, c.args, silent, true);
       if (!silent && lastTurn && lastTurn !== before) toolTurn = lastTurn;
       const txt = (r?.content ?? []).filter((x: any) => x.type === "text").map((x: any) => x.text).join(" ");
       results.push({ id: c.id, name: c.name, text: txt || "(no text)", data: r?.structuredContent, isError: !!r?.isError || !r });
+      const sc = r?.structuredContent;
+      if (c.name === "review_flight" && sc?.quoteId) reviewedIn.set(sc.quoteId, turnNo);
+      // The review card asks the traveller to decide, and a "not now" is an answer: either way, wait for them.
+      if (c.name === "review_flight" || ["cancelled", "not_paid"].includes(sc?.status)) endTurn = true;
     }
     transcript.push({ role: "tool", results });
+    if (endTurn) { setTimeout(() => speaking(false), 4000); return; }
   }
 }
 
@@ -362,10 +488,12 @@ function elicit(p: any): Promise<any> {
     modalRoot.hidden = false;
     const done = (r: any) => { modalRoot.hidden = true; modalRoot.innerHTML = ""; resolve(r); };
     if (p.mode === "url") {
-      const host = new URL(p.url).hostname;
+      const u = new URL(p.url), host = u.hostname;
+      const checkout = /checkout/.test(u.hostname + u.pathname);
+      // Checkout pages vs handing off to another app (the ride app): same consent sheet, honest labels.
       modalRoot.innerHTML = `<div class="sheet2" role="dialog" aria-modal="true" aria-labelledby="st"><h2 id="st">${esc(p.message)}</h2>
-        <p class="sub lock">Secure page on <strong>${esc(host)}</strong>. GateCue never sees your card details.</p>
-        <div class="acts"><button class="primary" id="go">Open checkout</button><button id="no">Not now</button></div></div>`;
+        <p class="sub ${checkout ? "lock" : ""}">${checkout ? `Secure page on <strong>${esc(host)}</strong>. GateCue never sees your card details.` : `Opens your ride app (or <strong>${esc(host)}</strong>). Nothing is requested or paid until you confirm there.`}</p>
+        <div class="acts"><button class="primary" id="go">${checkout ? "Open checkout" : "Open ride app"}</button><button id="no">Not now</button></div></div>`;
       modalRoot.querySelector("#go")!.addEventListener("click", () => { window.open(p.url, "_blank"); done({ action: "accept" }); });
       modalRoot.querySelector("#no")!.addEventListener("click", () => done({ action: "decline" }));
       return;
@@ -410,9 +538,29 @@ async function glance() {
   } catch { /* the glance is optional */ }
 }
 
+// Demo only (keyless demo schedule): make the watched flight late, change its gate, or cancel it, for filming.
+async function wireDisrupt() {
+  const sel = document.querySelector<HTMLSelectElement>("#disrupt");
+  if (!sel) return;
+  const info = await fetch(new URL("/demo/info", SERVER)).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  if (!info?.demoSchedule) return;
+  sel.closest("label")!.hidden = false;
+  sel.addEventListener("change", async () => {
+    const flight = SCENARIO.flight.number, v = sel.value;
+    sel.value = "";
+    const body = v === "clear" ? { clear: true } : v === "delay" ? { number: flight, delayMinutes: 40 } : v === "late" ? { number: flight, delayMinutes: 150 } : v === "gate" ? { number: flight, gate: "D3" } : v === "cancel" ? { number: flight, cancelled: true } : null;
+    if (body) await fetch(new URL("/demo/disrupt", SERVER), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).catch(() => {});
+  });
+}
+
 async function main() {
   document.querySelectorAll<HTMLButtonElement>("[data-device]").forEach((b) => b.addEventListener("click", () => { device = b.dataset.device as Device; applyDevice(); }));
   $("#theme").addEventListener("click", () => { theme = theme === "dark" ? "light" : "dark"; applyDevice(); });
+  const vb = $<HTMLButtonElement>("#voice");
+  const syncVoice = () => { vb.setAttribute("aria-pressed", String(voiceOn)); vb.textContent = voiceOn ? "Voice on" : "Voice off"; };
+  vb.addEventListener("click", () => { voiceOn = !voiceOn; if (!voiceOn) { audio?.pause(); if ("speechSynthesis" in window) speechSynthesis.cancel(); } syncVoice(); });
+  syncVoice();
+  wireMic();
   window.addEventListener("resize", applyDevice);
   applyDevice();
   // Opening: the GateCue mark opens like a gate onto the home screen (skipped for scripted runs and voice-only).
@@ -428,6 +576,7 @@ async function main() {
   const { tools: list } = await client.listTools();
   for (const t of list) tools.set(t.name, t);
   void glance();
+  void wireDisrupt();
   toolDefs = list.map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema }));
   if (q.get("brain") !== "scripted") {
     try { const b = await (await fetch(new URL("/sim/agent", SERVER))).json(); if (b?.provider) brain = b; } catch { /* older server: scripted */ }

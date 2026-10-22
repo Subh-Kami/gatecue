@@ -78,9 +78,9 @@ body[data-device="voice"] .turn:not(:nth-last-child(-n+2)) { display:none; }
 body[data-device="voice"] .turn.user { align-self:center; background:transparent; color:#9aa6b4; font-size:18px; padding:0; }
 body[data-device="voice"] .turn.alexa .say-text { font-size:21px; max-width:100%; }
 body[data-device="voice"] .lightbar { left:15%; right:15%; bottom:48px; height:10px; border-radius:10px; opacity:.35; }
-.fullscreen { position:absolute; inset:0; background:var(--sheet); z-index:5; padding:40px 64px; overflow:auto; }
+.fullscreen { position:absolute; inset:0; background:var(--sheet); z-index:5; padding:24px 64px 40px; overflow:auto; overscroll-behavior:contain; }
 .fullscreen iframe.card { margin:0; }
-.fullscreen .close { position:absolute; top:24px; right:40px; z-index:6; font:inherit; font-size:22px; padding:12px 24px; border-radius:999px; border:0; background:#25303C; color:#fff; }
+.fullscreen .close { position:sticky; top:0; display:block; margin:0 -24px 24px auto; z-index:6; box-shadow:0 6px 24px rgba(0,0,0,.4); font:inherit; font-size:22px; padding:12px 24px; border-radius:999px; border:0; background:#25303C; color:#fff; }
 .modal { position:absolute; inset:0; background:rgba(0,0,0,.55); display:flex; align-items:flex-end; justify-content:center; z-index:10; }
 .modal[hidden], .fullscreen[hidden] { display:none; }
 .sheet2 { width:min(880px,94%); background:#16273A; color:#fff; border-radius:34px 34px 0 0; padding:34px 44px 40px; font-size:26px; }
@@ -277,3 +277,11 @@ body.intro-on .amb-card, body.intro-on .amb-trip, body.intro-on .amb-time, body.
   .amb-top { animation: floatin 800ms cubic-bezier(.05,.7,.1,1) 220ms both; }
   @keyframes amb-time-in { from { opacity:0; transform:translateY(24px); filter:blur(8px); letter-spacing:.04em; } }
 }
+
+/* Push-to-talk */
+.say .mic { width:42px; height:42px; padding:0; display:grid; place-items:center; border-radius:50%; background:#232b36; flex:none; }
+.say .mic svg { width:20px; height:20px; fill:none; stroke:#e8edf3; stroke-width:2; stroke-linecap:round; }
+.say .mic[aria-pressed="true"] { background:#12C3EE; box-shadow:0 0 0 6px rgba(18,195,238,.22); }
+.say .mic[aria-pressed="true"] svg { stroke:#04121c; }
+@media (prefers-reduced-motion: no-preference) { body.mic-on .say .mic { animation: micpulse 1.2s ease-in-out infinite; } @keyframes micpulse { 50% { box-shadow:0 0 0 12px rgba(18,195,238,.08); } } }
+.bar #voice[aria-pressed="false"] { opacity:.7; }

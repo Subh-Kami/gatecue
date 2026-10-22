@@ -1,10 +1,11 @@
 // Live AWS check for GateCue's own code paths (run on a machine that's logged in to AWS):
-// DynamoDB memory (seeds the demo traveller on first run), Amazon Location drive time, and the Bedrock brain.
+// DynamoDB memory (seeds the demo traveller on first run), Amazon Location drive time, Polly voice and the Bedrock brain.
 // Run: npm run test:aws
 import assert from "node:assert/strict";
 import { getProfile, getTrips, memorySource, findPlace } from "../server/memory.js";
 import { driveTime } from "../server/location.js";
 import { selectBrain, systemPrompt } from "../server/agent.js";
+import { synthesize } from "../server/voice.js";
 
 process.env.GC_AWS = "1";
 const ok = (s: string) => console.log(`✓ ${s}`);
@@ -20,6 +21,11 @@ assert.ok(home && sam && sea, "saved places resolve");
 const drive = await driveTime(home, sea, sam, new Date("2026-10-15T04:55:00-07:00"));
 if (drive) ok(`Amazon Location: home -> Sam's -> SEA at 4:55 AM on Oct 15 = ${drive.minutes} min (legs ${drive.legs.join(" + ")})`);
 else bad("Amazon Location: no route (see the warning above)");
+
+try {
+  const audio = await synthesize("Leave at 4:59 AM. You reach Market St office 81 minutes before your meeting.");
+  ok(`Amazon Polly voice: ${Math.round(audio.length / 1024)} KB of speech`);
+} catch (e) { bad(`Amazon Polly voice: ${(e as Error).name}: ${(e as Error).message}`); }
 
 const brain = selectBrain({ ...process.env, GC_BRAIN: "bedrock" });
 try {

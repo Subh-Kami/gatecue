@@ -48,3 +48,7 @@
   .banner .ok-l { animation: t-rise2 520ms var(--ease-enter) 420ms both; }
   @keyframes t-rise2 { from { opacity: 0; transform: translateY(6px); } }
 }
+.handoff { width: 52px; height: 52px; flex: none; border-radius: 50%; display: grid; place-items: center; background: rgba(6,12,24,.55); border: 2.5px solid #9FD8F2; color: #9FD8F2; }
+.handoff svg { width: 24px; height: 24px; }
+.conf .foot .open { margin-left: auto; flex: none; white-space: nowrap; }
+@media (prefers-reduced-motion: no-preference) { .handoff { animation: m-pop-in 520ms cubic-bezier(.2,1.6,.4,1) 200ms both; } @keyframes m-pop-in { from { transform: scale(.4); opacity: 0; } } .handoff svg { animation: c-nudge 1.6s ease-in-out 900ms 2; } @keyframes c-nudge { 50% { transform: translateX(3px); } } }

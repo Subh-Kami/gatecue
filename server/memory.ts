@@ -25,7 +25,7 @@ const SEED_TRIPS: Trip[] = [{
   goalPlace: "Market St office",
   origin: "Home, Capitol Hill",
   pickupStop: "Sam's place",
-  flight: { number: "AS 725", from: "SEA", to: "SFO", departure: "2026-10-15T06:39:00-07:00", arrival: "2026-10-15T08:49:00-07:00" },
+  flight: { number: "CQ 725", from: "SEA", to: "SFO", departure: "2026-10-15T06:39:00-07:00", arrival: "2026-10-15T08:49:00-07:00" },
   checkinCutoffMinutes: 45,
 }];
 
@@ -81,7 +81,7 @@ export async function getTrips(): Promise<Trip[]> {
     }));
     let r = await q();
     if (!r.Items?.length) {
-      for (const t of SEED_TRIPS) await putItem(`TRIP#${t.flight.departure}#${t.id}`, t, true);
+      for (const t of SEED_TRIPS) await putItem(`TRIP#${t.id}`, t, true);
       r = await q();
     }
     const trips = (r.Items ?? []).map((i) => JSON.parse(i.data!.S!) as Trip);
@@ -101,20 +101,41 @@ export async function updatePreferences(patch: Partial<Pick<Preferences, "buffer
   return p.preferences;
 }
 
+// Trips are keyed by id (sk TRIP#<id>). Saving the same goal again updates that trip instead of adding a copy.
+async function putTrip(t: Trip) {
+  if (!useDynamo()) return;
+  try { await putItem(`TRIP#${t.id}`, t); lastSource = "DynamoDB"; } catch (e) { fallback(e); }
+}
+
 // After a rebooking, the trip remembers the new flight (so the next plan, glance and email use it).
 export async function updateTripFlight(goalTime: string, flight: FlightRef): Promise<Trip | undefined> {
   const trips = await getTrips();
   const t = trips.find((x) => new Date(x.goalTime).getTime() === new Date(goalTime).getTime());
   if (!t) return undefined;
-  const oldKey = `TRIP#${t.flight.departure}#${t.id}`;
   t.flight = flight;
-  if (useDynamo()) {
-    try {
-      await putItem(`TRIP#${flight.departure}#${t.id}`, t);
-      if (oldKey !== `TRIP#${flight.departure}#${t.id}`) await db().send(new DeleteItemCommand({ TableName: TABLE, Key: { pk: { S: pk }, sk: { S: oldKey } } }));
-    } catch (e) { fallback(e); }
-  }
+  await putTrip(t);
   return t;
+}
+
+// Remember a trip the traveller described (from plan_trip). Same goal time = same trip.
+export async function saveTrip(input: Omit<Trip, "id" | "checkinCutoffMinutes"> & { checkinCutoffMinutes?: number }): Promise<Trip> {
+  const trips = await getTrips();
+  const same = trips.find((x) => new Date(x.goalTime).getTime() === new Date(input.goalTime).getTime());
+  const day = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles" }).format(new Date(input.goalTime)).replaceAll("-", "");
+  const t: Trip = { checkinCutoffMinutes: 45, ...same, ...input, id: same?.id ?? `trip-${day}-${input.flight.to.toLowerCase()}-${Date.now().toString(36)}` } as Trip;
+  if (same) Object.assign(same, t); else trips.push(t);
+  local.trips = trips;
+  await putTrip(t);
+  return t;
+}
+
+// Back to the seeded demo traveller (local and DynamoDB). Used by `npm run reset:memory`.
+export async function resetMemory(): Promise<void> {
+  resetLocalMemory();
+  if (!useDynamo()) return;
+  const r = await db().send(new QueryCommand({ TableName: TABLE, KeyConditionExpression: "pk = :pk", ExpressionAttributeValues: { ":pk": { S: pk } } }));
+  for (const i of r.Items ?? []) await db().send(new DeleteItemCommand({ TableName: TABLE, Key: { pk: i.pk!, sk: i.sk! } }));
+  await getProfile(); await getTrips(); // reseed
 }
 
 export function memorySource() { return lastSource; }

@@ -7,19 +7,22 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 // ---- Reply typography -----------------------------------------------------------------------------
 // Words arrive in reading order. Times get a tabular face and an AM (sunrise gold) or PM (dusk violet) tag;
 // "this evening" / "tomorrow morning" get a matching underline. textContent stays exactly the spoken text.
-const TOKEN = /(\b\d{1,2}(?::\d{2})?\s?(?:AM|PM)\b|\b(?:this (?:morning|afternoon|evening)|tomorrow (?:morning|afternoon|evening)|tonight)\b)/gi;
+const TOKEN = /(\b\d{1,2}(?::\d{2})?\s?(?:AM|PM)\b[.,;:!?]?|\b(?:this (?:morning|afternoon|evening)|tomorrow (?:morning|afternoon|evening)|tonight)\b[.,;:!?]?)/gi;
 export function sayHTML(text: string): string {
   let i = 0, out = "";
   for (const [n, part] of text.split(TOKEN).entries()) {
     if (!part) continue;
     if (n % 2 === 1) {
-      const t = /^(.*?)(\s?)(AM|PM)$/i.exec(part);
+      // Trailing punctuation stays glued to the time, so "7:19 AM." never wraps its full stop onto the next line.
+      const punct = /[.,;:!?]$/.test(part) ? part.slice(-1) : "";
+      const body = punct ? part.slice(0, -1) : part;
+      const t = /^(.*?)(\s?)(AM|PM)$/i.exec(body);
       if (t) {
         const ap = t[3].toLowerCase();
-        out += `<span class="w tm" style="--w:${i++}">${esc(t[1])}${t[2]}<span class="ap ${ap}">${esc(t[3])}</span></span>`;
+        out += `<span class="w tm" style="--w:${i++}">${esc(t[1])}${t[2]}<span class="ap ${ap}">${esc(t[3])}</span>${esc(punct)}</span>`;
       } else {
-        const ap = /morning/i.test(part) ? "am" : "pm";
-        out += `<span class="w dp ${ap}" style="--w:${i++}">${esc(part)}</span>`;
+        const ap = /morning/i.test(body) ? "am" : "pm";
+        out += `<span class="w"><span class="dp ${ap}" style="--w:${i++}">${esc(body)}</span>${esc(punct)}</span>`;
       }
       continue;
     }

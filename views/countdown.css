@@ -32,3 +32,17 @@
   @keyframes r-in { from { transform: scale(.4) rotate(-90deg); opacity: 0; } }
   .late .ring { animation: beat 1.2s ease-in-out infinite; }
 }
+/* Flight-change variant */
+.change .visual .on-pic { position: absolute; left: 14px; bottom: 12px; color: #fff; text-shadow: 0 1px 10px rgba(0,0,0,.45); }
+.change .big { font-size: var(--textStyleDisplay1); line-height: 1; }
+.change .gate { letter-spacing: .02em; }
+.change .gone svg { width: 46px; height: 46px; color: #FFB4A8; }
+.change .was { font-size: var(--textStyleBody2); opacity: .9; text-decoration: line-through; margin-top: 4px; }
+.strip.ok { background: var(--ok); color: #06210f; }
+.strip.bad { background: var(--bad); color: #1a0c0a; }
+:root[data-theme="light"] .strip.ok, :root[data-theme="light"] .strip.bad { color: #fff; }
+@media (prefers-reduced-motion: no-preference) {
+  .change .was { animation: c-strike 700ms var(--ease-enter) 700ms both; }
+  @keyframes c-strike { from { text-decoration-color: transparent; opacity: .4; } }
+  .change.cancelled .gone svg { animation: stamp 560ms cubic-bezier(.2,1.5,.35,1) 300ms both; }
+}

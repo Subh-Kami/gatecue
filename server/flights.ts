@@ -2,6 +2,7 @@
 // Fares and refund rules are SIMULATED (no public fare API); results say so in `fareSource`.
 import { createHash } from "node:crypto";
 import { aeroGet } from "./aerodatabox.js";
+import { demoFare } from "./demo-schedule.js";
 import { checkFlightAgainstGoal, type FlightRef, type FlightCheck } from "./plan.js";
 
 export interface FlightOption {
@@ -46,7 +47,7 @@ export async function searchFlights(p: {
       if (new Date(flight.departure).getTime() <= p.now.getTime()) continue; // already gone
       if (String(d.status).toLowerCase().startsWith("cancel")) continue;
       const check = checkFlightAgainstGoal(flight, p.goalTime, p.timeZone, p.deplaneMinutes, p.arrivalToVenueMinutes, p.now);
-      const { fareUsd, refundable } = simulatedFare(flight.number, flight.departure);
+      const { fareUsd, refundable } = demoFare(flight.number) ?? simulatedFare(flight.number, flight.departure);
       out.push({
         id: `${flight.number.replace(/\s+/g, "")}_${flight.departure}`,
         flight, airline: d.airline?.name ?? "", status: d.status ?? "Expected", check, fareUsd, refundable, fareSource: "simulated",

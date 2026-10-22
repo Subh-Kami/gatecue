@@ -3,14 +3,16 @@ import { registerAppTool, registerAppResource, RESOURCE_MIME_TYPE } from "@model
 import type { TaskStore, TaskMessageQueue } from "@modelcontextprotocol/sdk/experimental/tasks/interfaces.js";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { planTrip, fmtTime, fmtDay, spokenTime, dayPart } from "./plan.js";
+import { planTrip, fmtTime, fmtDay, spokenTime, dayPart, checkFlightAgainstGoal } from "./plan.js";
 import { startCheckout } from "./checkout.js";
-import { getFlightStatus, aeroEnabled } from "./aerodatabox.js";
+import { getFlightStatus, aeroEnabled, type FlightStatus } from "./aerodatabox.js";
+import { demoScheduleOn } from "./demo-schedule.js";
 import { searchFlights, type FlightOption } from "./flights.js";
 import { viewUri, viewHtml, VIEW_NAMES } from "./views.js";
 import { now, speedup } from "./clock.js";
-import { getProfile, getTrips, updatePreferences, findPlace, memorySource, updateTripFlight } from "./memory.js";
-import { emailEnabled, travellerEmail, maskEmail, planEmail, bookingEmail, sendEmail } from "./mailer.js";
+import { getProfile, getTrips, updatePreferences, findPlace, memorySource, updateTripFlight, saveTrip } from "./memory.js";
+import { routeProblem, COVERAGE } from "./airports.js";
+import { emailEnabled, travellerEmail, maskEmail, planEmail, bookingEmail, alertEmail, sendEmail } from "./mailer.js";
 import { driveTime } from "./location.js";
 
 // Fallbacks when Amazon Location or saved preferences are unavailable. Airline policy data is not wired in yet.
@@ -19,7 +21,7 @@ const PICKUP_WAIT_MINUTES = 3; // time at the stop itself when the route already
 const TZ = "America/Los_Angeles";
 
 const flightShape = {
-  number: z.string().describe("Flight number, e.g. AS 725"),
+  number: z.string().describe("Flight number, e.g. CQ 725"),
   from: z.string().describe("Departure airport IATA code, e.g. SEA"),
   to: z.string().describe("Arrival airport IATA code, e.g. SFO"),
   departure: z.string().describe("Departure time, ISO 8601 with UTC offset"),
@@ -41,9 +43,11 @@ const quotes = new Map<string, Quote>();
 export interface ServerDeps { taskStore: TaskStore; taskMessageQueue: TaskMessageQueue; publicBaseUrl: string }
 
 // Fixed half-day windows (AeroDataBox allows up to 12 h per call) so repeated searches hit the cache.
-function dayWindows(d: Date): Array<[string, string]> {
-  const day = new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(d); // YYYY-MM-DD
-  return [[`${day}T00:00`, `${day}T11:59`], [`${day}T12:00`, `${day}T23:59`]];
+// Covers today and, if different, the goal's day: the night before an 11 AM meeting, tomorrow's flights are the ones that matter.
+function searchWindows(now: Date, goalTime: string): Array<[string, string]> {
+  const ymd = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(d); // YYYY-MM-DD
+  const days = [...new Set([ymd(now), ymd(new Date(goalTime))])].filter((d) => d >= ymd(now)).slice(0, 2);
+  return days.flatMap((day) => [[`${day}T00:00`, `${day}T11:59`], [`${day}T12:00`, `${day}T23:59`]] as Array<[string, string]>);
 }
 
 // "6:30", "6", "six thirty" -> minutes past midnight on a 12-hour clock (AM/PM deliberately ignored).
@@ -71,6 +75,48 @@ async function buildPlan(args: PlanArgs) {
   const plan = drive ? planTrip({ ...base, driveMinutes: drive.minutes, pickupDetourMinutes: args.pickupStop ? PICKUP_WAIT_MINUTES : 0 }) : estimate;
   const driveMinutes = drive?.minutes ?? DEFAULTS.driveMinutes + (args.pickupStop ? DEFAULTS.pickupDetourMinutes : 0);
   return { plan, drive, driveMinutes, bufferMinutes };
+}
+
+// What changed between two live readings of one flight, as a spoken alert. Delays under 10 minutes are noise.
+const depOf = (f: FlightStatus) => (f.from.revisedLocal ?? f.from.scheduledLocal ?? "").replace(" ", "T");
+const arrOf = (f: FlightStatus) => (f.to.revisedLocal ?? f.to.scheduledLocal ?? "").replace(" ", "T");
+function flightChange(was: FlightStatus, now_: FlightStatus, a: { goalTime?: string; goalPlace?: string; flightNumber?: string }) {
+  const n = now_.number || a.flightNumber || "Your flight";
+  const where = a.goalPlace ?? "your meeting";
+  if (/cancel/i.test(now_.status) && !/cancel/i.test(was.status)) {
+    return { subject: `${n} is cancelled`, text: `${n} has been cancelled. Want flights that still get you to ${where} on time?`, data: { change: "cancelled", flightNumber: n } };
+  }
+  const shift = Math.round((new Date(depOf(now_)).getTime() - new Date(depOf(was)).getTime()) / 60_000);
+  if (Math.abs(shift) >= 10 && depOf(now_)) {
+    const newDep = fmtTime(depOf(now_), TZ);
+    let tail = "", makesGoal: boolean | undefined, marginMinutes: number | undefined;
+    if (a.goalTime && arrOf(now_)) {
+      const c = checkFlightAgainstGoal({ number: n, from: now_.from.iata ?? "", to: now_.to.iata ?? "", departure: depOf(now_), arrival: arrOf(now_) }, a.goalTime, TZ, DEFAULTS.deplaneMinutes, DEFAULTS.arrivalToVenueMinutes, now());
+      makesGoal = c.makesGoal; marginMinutes = c.marginMinutes;
+      tail = c.makesGoal ? ` You'd still reach ${where} ${c.marginMinutes} minutes early.` : ` That gets you to ${where} ${-c.marginMinutes} minutes late. Want flights that still make it?`;
+    }
+    const verb = shift > 0 ? `is delayed ${shift} minutes` : `now leaves ${-shift} minutes early`;
+    const text = `Heads up: ${n} ${verb}, leaving at ${newDep}.${tail}${shift > 0 && makesGoal !== false ? " Check-in can still close on the original schedule, so keep to your plan." : ""}`;
+    return { subject: `${n} ${verb}: now ${newDep}`, text, data: { change: "delay", flightNumber: n, shiftMinutes: shift, newDepartureDisplay: newDep, oldDepartureDisplay: fmtTime(depOf(was), TZ), makesGoal, marginMinutes, gate: now_.from.gate } };
+  }
+  if (now_.from.gate && was.from.gate && now_.from.gate !== was.from.gate) {
+    return { subject: `${n} gate change: ${now_.from.gate}`, text: `Gate change: ${n} now leaves from gate ${now_.from.gate}, not ${was.from.gate}.`, data: { change: "gate", flightNumber: n, gate: now_.from.gate, oldGate: was.from.gate } };
+  }
+  return null;
+}
+
+// Ride app handoff link (Uber universal link: opens the app if installed, else the website). Pickup and drop-off are
+// prefilled with coordinates when GateCue knows the place. UBER_CLIENT_ID (from a free Uber developer app) is added when set.
+function rideLink(from: { lat: number; lon: number; label: string } | undefined, fromText: string, to: { lat: number; lon: number; label: string } | undefined, toText: string): string {
+  const u = new URL("https://m.uber.com/ul/");
+  if (process.env.UBER_CLIENT_ID) u.searchParams.set("client_id", process.env.UBER_CLIENT_ID);
+  u.searchParams.set("action", "setPickup");
+  const put = (k: "pickup" | "dropoff", p: typeof from, text: string) => {
+    if (p) { u.searchParams.set(`${k}[latitude]`, String(p.lat)); u.searchParams.set(`${k}[longitude]`, String(p.lon)); }
+    u.searchParams.set(`${k}[nickname]`, p?.label ?? text);
+  };
+  put("pickup", from, fromText); put("dropoff", to, toText);
+  return u.toString();
 }
 
 // Booking confirmations go to the traveller's inbox too, when email is set up. Never blocks or fails a booking.
@@ -121,7 +167,11 @@ export function createGateCueServer(deps: ServerDeps): McpServer {
     },
     _meta: { ui: { resourceUri: viewUri("timeline") } },
   }, async (args) => {
+    const outside = routeProblem(args.flight.from, args.flight.to);
+    if (outside) return { isError: true, content: [{ type: "text", text: outside }] };
     const { plan, drive, driveMinutes, bufferMinutes } = await buildPlan(args);
+    // Remember the trip, so the home screen, the watcher, emails and the next session all know about it.
+    await saveTrip({ goalTime: args.goalTime, goalPlace: args.goalPlace, origin: args.origin, pickupStop: args.pickupStop, flight: args.flight, checkinCutoffMinutes: DEFAULTS.checkinCutoffMinutes });
     const driveTxt = drive ? ` The drive${args.pickupStop ? `, with the stop,` : ""} is about ${driveMinutes} minutes in traffic.` : "";
     return {
       content: [{ type: "text", text: plan.summary + driveTxt }],
@@ -205,7 +255,7 @@ export function createGateCueServer(deps: ServerDeps): McpServer {
   // ---- search_flights ----------------------------------------------------------------------
   registerAppTool(server, "search_flights", {
     title: "Find flights that still make the goal",
-    description: "Find today's remaining flights between two airports from live schedules, marking which ones still get the traveller to their goal on time. Use when a flight is missed or cancelled, or the traveller asks for other flights. Returns up to 5 options, best first.",
+    description: `Find the remaining flights between two airports (today and the goal's day), marking which ones still get the traveller to their goal on time. Use for a new trip, or when a flight is missed or cancelled, or the traveller asks for other flights. Returns up to 5 options, best first. Covers West Coast airports: ${COVERAGE}.`,
     inputSchema: {
       from: z.string().describe("Departure airport IATA code"),
       to: z.string().describe("Arrival airport IATA code"),
@@ -216,15 +266,18 @@ export function createGateCueServer(deps: ServerDeps): McpServer {
     outputSchema: { headline: z.string(), goalDisplay: z.string(), options: z.array(optionShape), hiddenCount: z.number() },
     _meta: { ui: { resourceUri: viewUri("flights") } },
   }, async ({ from, to, goalTime, goalPlace, departsAround }) => {
+    from = from.trim().toUpperCase(); to = to.trim().toUpperCase();
+    const outside = routeProblem(from, to);
+    if (outside) return { isError: true, content: [{ type: "text", text: outside }] };
     if (!aeroEnabled()) return { isError: true, content: [{ type: "text", text: "I can't search flights right now. Try again in a moment." }] };
     const t = now();
     let all: FlightOption[];
     try {
-      all = await searchFlights({ from, to, windows: dayWindows(t), goalTime, timeZone: TZ, now: t, deplaneMinutes: DEFAULTS.deplaneMinutes, arrivalToVenueMinutes: DEFAULTS.arrivalToVenueMinutes });
+      all = await searchFlights({ from, to, windows: searchWindows(t, goalTime), goalTime, timeZone: TZ, now: t, deplaneMinutes: DEFAULTS.deplaneMinutes, arrivalToVenueMinutes: DEFAULTS.arrivalToVenueMinutes });
     } catch {
       return { isError: true, content: [{ type: "text", text: "The flight schedule service didn't answer. Want me to try again?" }] };
     }
-    if (!all.length) return { isError: true, content: [{ type: "text", text: `I couldn't find any more flights from ${from} to ${to} today. Want me to look at tomorrow?` }] };
+    if (!all.length) return { isError: true, content: [{ type: "text", text: `I couldn't find any more flights from ${from} to ${to} before your meeting. Want me to look at later flights?` }] };
     const makers = all.filter((o) => o.check.makesGoal);
     // Up to 5 inline (Alexa+ carousel guidance). If the traveller named a clock time, flights near it
     // (AM or PM) go first so the ambiguity is visible; otherwise flights that make it, then the next few that don't.
@@ -320,38 +373,52 @@ export function createGateCueServer(deps: ServerDeps): McpServer {
     return { content: [{ type: "text", text: `You're booked on ${o.flight.number}, leaving ${o.check.departureDisplay} ${o.check.departureDaySpoken}. Confirmation ${confirmation.split("").join(" ")}.${mailed}` }], structuredContent: { status: "booked", confirmation, ...base } };
   });
 
-  // ---- book_ride ---------------------------------------------------------------------------
+  // ---- book_ride: hand the ride to the traveller's ride app, prefilled ------------------------
+  // Ride companies don't let third parties book on a rider's behalf (their booking APIs are partner-only), so GateCue
+  // does the honest thing: it opens the ride app with pickup and airport filled in, and the traveller requests and pays
+  // there. GateCue never sees payment details and never books a ride by itself.
   registerAppTool(server, "book_ride", {
-    title: "Book a ride",
-    description: "Book a ride to the airport, with an optional pickup stop. Asks the traveller to confirm the time and payment card before booking.",
-    inputSchema: { pickup: z.string(), stop: z.string().optional(), dropoff: z.string(), pickupTime: z.string().describe("ISO 8601 with UTC offset") },
+    title: "Set up the ride to the airport",
+    description: "Open the traveller's ride app with the pickup and the airport already filled in, for the leave time from plan_trip. The traveller requests (or schedules) and pays in the ride app. Mention a pickup stop so they can add it there.",
+    inputSchema: { pickup: z.string().describe("Where the ride starts, usually home"), stop: z.string().optional().describe("A pickup stop on the way, if the plan has one"), dropoff: z.string().describe("The departure airport (the ride goes to the airport, not to the meeting)"), pickupTime: z.string().describe("ISO 8601 with UTC offset: the leave time from plan_trip") },
     outputSchema: {
-      kind: z.literal("ride"), status: z.enum(["booked", "cancelled"]), rideId: z.string().optional(), pickupDisplay: z.string(), pickupDay: z.string(),
-      pickup: z.string(), stop: z.string().optional(), dropoff: z.string(), priceUsd: z.number().optional(), card: z.string().optional(),
+      kind: z.literal("ride"), status: z.enum(["handed_off", "cancelled"]), pickupDisplay: z.string(), pickupDay: z.string(),
+      pickup: z.string(), stop: z.string().optional(), dropoff: z.string(), link: z.string().optional(), scheduleAhead: z.boolean(),
     },
     _meta: { ui: { resourceUri: viewUri("confirm") } },
   }, async (args) => {
     const pickupDisplay = fmtTime(args.pickupTime, TZ);
     const pickupDay = fmtDay(args.pickupTime, TZ);
-    const where = { kind: "ride" as const, pickupDay, pickup: args.pickup, stop: args.stop, dropoff: args.dropoff };
-    const priceUsd = args.stop ? 46.8 : 38.2;
-    const result = await server.server.elicitInput({
-      mode: "form",
-      message: `Book a ride at ${pickupDisplay} ${pickupDay} from ${args.pickup}${args.stop ? `, stopping at ${args.stop},` : ""} to ${args.dropoff} for $${priceUsd.toFixed(2)}?`,
-      requestedSchema: { type: "object", properties: { card: { type: "string", title: "Pay with", enum: ["Visa ending 4242", "Mastercard ending 4444"], default: "Visa ending 4242" } }, required: ["card"] },
+    // More than 30 minutes away: the traveller schedules it in the app rather than requesting now.
+    const scheduleAhead = new Date(args.pickupTime).getTime() - now().getTime() > 30 * 60_000;
+    const profile = await getProfile();
+    // This ride always goes to the departure airport of the upcoming trip. A model that fills in the meeting
+    // place (in another city) would send the car to the wrong place, so anything else is corrected here.
+    const trips = await getTrips();
+    const trip = trips.find((t) => new Date(t.goalTime).getTime() > now().getTime()) ?? trips[0];
+    const airport = trip ? findPlace(profile, trip.flight.from) : undefined;
+    const asked = findPlace(profile, args.dropoff);
+    const dropoff = airport && asked !== airport ? airport.label : args.dropoff;
+    if (dropoff !== args.dropoff) console.info(`[book_ride] dropoff "${args.dropoff}" corrected to the departure airport`);
+    const where = { kind: "ride" as const, pickupDay, pickup: args.pickup, stop: args.stop, dropoff, scheduleAhead };
+    const link = rideLink(findPlace(profile, args.pickup), args.pickup, findPlace(profile, dropoff), dropoff);
+    const how = `${scheduleAhead ? `Schedule it for ${spokenTime(args.pickupTime, TZ)} ${dayPart(args.pickupTime, TZ, now())}` : "Request it now"}${args.stop ? ` and add ${args.stop} as a stop` : ""}.`;
+    const open = await server.server.elicitInput({
+      mode: "url", url: link, elicitationId: randomUUID(),
+      message: `Open your ride app with ${args.pickup} to ${dropoff} filled in? ${how} You'll see the price and pay in the app.`,
     });
-    if (result.action !== "accept") return { content: [{ type: "text", text: "Okay, I didn't book the ride." }], structuredContent: { status: "cancelled", pickupDisplay, ...where } };
-    const card = String(result.content?.card ?? "Visa ending 4242");
-    const rideId = `ride_${randomUUID().slice(0, 8)}`;
-    const mailed = await emailBooking({ kind: "ride", pickupTime: args.pickupTime, pickup: args.pickup, stop: args.stop, dropoff: args.dropoff, priceUsd, card, rideId });
-    return { content: [{ type: "text", text: `Booked. Your ride picks you up at ${spokenTime(args.pickupTime, TZ)}${args.stop ? ` and stops at ${args.stop}` : ""}. I charged $${priceUsd.toFixed(2)} to your ${card}.${mailed}` }], structuredContent: { status: "booked", rideId, pickupDisplay, priceUsd, card, ...where } };
+    if (open.action !== "accept") return { content: [{ type: "text", text: "Okay, I didn't open your ride app." }], structuredContent: { status: "cancelled", pickupDisplay, ...where } };
+    return {
+      content: [{ type: "text", text: `Your ride app is open with the airport filled in. ${how}` }],
+      structuredContent: { status: "handed_off", pickupDisplay, link, ...where },
+    };
   });
 
   // ---- get_flight_status -------------------------------------------------------------------
   server.registerTool("get_flight_status", {
     title: "Flight status",
     description: "Get the live status of one flight: scheduled and revised times, terminal, gate, delays or cancellation.",
-    inputSchema: { number: z.string().describe("Flight number, e.g. AS 725"), date: z.string().describe("Departure date in the departure airport's local time, YYYY-MM-DD") },
+    inputSchema: { number: z.string().describe("Flight number, e.g. CQ 725"), date: z.string().describe("Departure date in the departure airport's local time, YYYY-MM-DD") },
     outputSchema: {
       flights: z.array(z.object({
         number: z.string(), status: z.string(), airline: z.string().optional(),
@@ -377,11 +444,15 @@ export function createGateCueServer(deps: ServerDeps): McpServer {
   // ---- watch_trip (Task) -----------------------------------------------------------------------
   server.experimental.tasks.registerToolTask("watch_trip", {
     title: "Watch the trip",
-    description: "Watch the traveller's check-in cutoff in the background and speak up when it's time to move.",
+    description: "Watch the trip in the background and speak up first: when it's time to move for check-in, and (if a flight is given) when that flight is delayed, changes gate or is cancelled.",
     inputSchema: {
       checkinCloses: z.string().describe("When check-in closes, ISO 8601 with UTC offset"),
       walkMinutes: z.number().describe("Walk time to the check-in counter"),
       nudgeLeadMinutes: z.number().default(15).describe("Speak up this many minutes before the latest time to leave"),
+      flightNumber: z.string().optional().describe("Also watch this flight's live status, e.g. CQ 725"),
+      flightDate: z.string().optional().describe("The flight's departure date, local YYYY-MM-DD"),
+      goalTime: z.string().optional().describe("The goal time (ISO 8601), to say whether a delayed flight still makes it"),
+      goalPlace: z.string().optional().describe("The goal place, for the spoken alert"),
     },
     execution: { taskSupport: "required" },
     _meta: { ui: { resourceUri: viewUri("countdown") } },
@@ -391,6 +462,9 @@ export function createGateCueServer(deps: ServerDeps): McpServer {
       const closes = new Date(args.checkinCloses);
       const latestLeave = new Date(closes.getTime() - args.walkMinutes * 60_000);
       const tick = Math.max(50, 1000 / speedup());
+      const watchFlight = !!(args.flightNumber && args.flightDate && aeroEnabled());
+      const pollEvery = demoScheduleOn() ? 0 : 5 * 60_000; // live data: every 5 minutes (the status cache's age)
+      let baseline: FlightStatus | undefined, lastPoll = 0;
       (async () => {
         try {
           for (;;) {
@@ -398,6 +472,20 @@ export function createGateCueServer(deps: ServerDeps): McpServer {
             const cur = await taskStore.getTask(task.taskId).catch(() => null);
             if (!cur || ["completed", "failed", "cancelled"].includes(cur.status)) return;
             const t = now();
+            if (watchFlight && Date.now() - lastPoll >= pollEvery) {
+              lastPoll = Date.now();
+              const f = (await getFlightStatus(args.flightNumber!, args.flightDate!).catch(() => []))[0];
+              if (f && !baseline) baseline = f;
+              const alert = f && baseline ? flightChange(baseline, f, args) : null;
+              if (alert) {
+                const mailed = emailEnabled() ? (await sendEmail(alertEmail(alert.subject, alert.text))).ok : false;
+                await taskStore.storeTaskResult(task.taskId, "completed", {
+                  content: [{ type: "text", text: alert.text + (mailed ? " I've emailed you too." : "") }],
+                  structuredContent: { ...alert.data, kind: "change", closesDisplay: fmtTime(closes, TZ), closesAt: closes.toISOString(), serverNow: now().toISOString(), speedup: speedup(), walkMinutes: args.walkMinutes },
+                });
+                return;
+              }
+            }
             const minsToLatest = Math.round((latestLeave.getTime() - t.getTime()) / 60_000);
             const minsToClose = Math.ceil((closes.getTime() - t.getTime()) / 60_000);
             if (minsToLatest <= (args.nudgeLeadMinutes ?? 15)) {

@@ -11,7 +11,7 @@ const root = document.getElementById("root")!;
 const KEY: Record<string, { label: (p: Plan) => string; icon: string; tone: string }> = {
   leave: { label: () => "Leave home", icon: icon.car, tone: "leave" },
   cutoff: { label: () => "Check-in closes", icon: icon.clock, tone: "cutoff" },
-  depart: { label: (p) => `${p.flightNumber ?? "Flight"} takes off`, icon: icon.plane, tone: "" },
+  depart: { label: (p) => `${p.flightNumber ?? "Flight"} departs`, icon: icon.plane, tone: "" },
   land: { label: (p) => `Land at ${p.to ?? ""}`, icon: icon.pin, tone: "" },
   goal: { label: () => "Meeting starts", icon: icon.checkCircle, tone: "goal" },
 };

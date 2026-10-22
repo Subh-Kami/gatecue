@@ -7,6 +7,7 @@
 // Default: anthropic when ANTHROPIC_API_KEY is set, otherwise scripted.
 // The endpoint is stateless: the simulator sends the whole conversation each time.
 import type { Express } from "express";
+import { COVERAGE } from "./airports.js";
 import { BedrockRuntimeClient, ConverseCommand, type Message as BrMessage, type ContentBlock as BrBlock, type Tool as BrTool } from "@aws-sdk/client-bedrock-runtime";
 import { now } from "./clock.js";
 import { fmtDayLong, fmtTime } from "./plan.js";
@@ -37,15 +38,19 @@ export function systemPrompt(at: Date = now()): string {
     "How to use GateCue:",
     "- If the traveller mentions their trip, flight or meeting and you don't have the details, call get_trip_context first. Don't ask for things it already knows.",
     "- Never invent times, flights, prices, gates or refund rules. Use only what the tools return.",
+    "- Do only what the traveller asked for in their latest message. Never book a ride or flight, send an email, start watching or change preferences unless they asked for it just now (or said yes when you offered it). After plan_trip, stop: the card already offers the next steps.",
     "- When a tool returns, its text is already spoken to the traveller with its card. Don't repeat or rephrase it. Reply with an empty message unless you must add something new, ask a question, or call another tool.",
-    "- To plan the day, call plan_trip with the saved trip. To book a ride, use the leave time from plan_trip as pickupTime.",
-    "- If a flight is missed or cancelled, or they ask for other flights, call search_flights with the trip's airports and goal.",
+    "- To plan the day of the saved trip, call plan_trip with it, including its pickupStop if it has one. To book a ride, use the leave time from plan_trip as pickupTime; the ride goes to the departure airport.",
+    "- For a new trip (\"I need to be in Los Angeles by 2 PM Friday\"), call search_flights from the traveller's home airport (SEA) to the destination airport with that goal, and stop so they can choose. When they have picked and booked a flight, or say they already have one, call plan_trip with it.",
+    `- GateCue covers flights between these West Coast airports only: ${COVERAGE}. Use their IATA codes. For any other destination (Paris, New York, another country), don't call tools: say in one sentence that GateCue plans West Coast trips today and other time zones are coming, and offer what it can do.`,
+    "- GateCue doesn't book hotels, trains or rental cars; say so briefly.",
+    "- If a flight is missed or cancelled, or they ask for other flights, call search_flights with the trip's airports and goal, then stop so they can choose from the card. Call review_flight only when they pick a flight or name a time.",
     "- If they name a clock time without AM or PM (like 'the 6:30'), call search_flights with departsAround set to it, then review_flight on the flight that matches, so they see whether it's morning or evening.",
     "- Before paying for any flight, call review_flight. Call book_flight only after the traveller clearly says to book that reviewed flight. book_flight and book_ride ask for confirmation themselves, so don't ask twice.",
     "- When they ask you to email, send or share the plan, call email_trip_plan. Bookings are emailed automatically when email is set up.",
-    "- When they ask you to watch the time or keep an eye on things, call watch_trip with checkinCloses from the trip context and walkMinutes 6.",
+    "- When they ask you to watch the time or keep an eye on things, call watch_trip with checkinCloses from the trip context, walkMinutes 6, and the trip's flightNumber, flightDate (YYYY-MM-DD), goalTime and goalPlace so delays and gate changes are caught too.",
     "- When they state a lasting preference (\"I like 20 minutes of buffer\"), save it with update_preferences, then re-plan if a plan is on screen.",
-    "- If something is outside GateCue (weather, music), answer briefly from what you know, without tools.",
+    "- If something has nothing to do with travel (weather, music, trivia), answer briefly and kindly from what you know, without tools. Never make up live facts such as today's weather; say you can't check that here.",
   ].join("\n");
 }
 
@@ -98,13 +103,24 @@ function anthropicBrain(model: string): Brain {
       if (!res.ok) throw new Error(`Anthropic API ${res.status}: ${body?.error?.type ?? "error"}: ${body?.error?.message ?? ""}`);
       const content: any[] = body.content ?? [];
       return {
-        text: content.filter((b) => b.type === "text").map((b) => b.text).join(" ").trim(),
+        text: spokenReply(content.filter((b) => b.type === "text").map((b) => b.text).join(" ")),
         toolCalls: content.filter((b) => b.type === "tool_use").map((b) => ({ id: b.id, name: b.name, args: b.input ?? {} })),
         raw: { provider: "anthropic", content },
         usage: { input: body.usage?.input_tokens ?? 0, output: body.usage?.output_tokens ?? 0 },
       };
     },
   };
+}
+
+// What the model "says" is spoken on an Echo Show, so only the reply itself may get through. Some models
+// (Nova among them) put their reasoning in the text, in <thinking> tags or as plain prose about "the user"
+// and "the assistant". Strip the tags; drop anything that still reads as reasoning about the conversation.
+export function spokenReply(raw: string): string {
+  let t = raw.replace(/<thinking>[\s\S]*?<\/thinking>/gi, " ").replace(/<thinking>[\s\S]*$/i, " ");
+  t = t.replace(/<\/?(response|answer|reply|output)>/gi, " ").replace(/\s+/g, " ").trim();
+  const reasoning = /\b(the (user|assistant|traveller)('s)? (last|previous|said|asked|hasn't|has|needs|should|wants)|the instructions|tool (call|result)s?|according to the (instructions|system)|conversation history)\b/i;
+  if (reasoning.test(t)) return "";
+  return t;
 }
 
 // ---- Amazon Bedrock Converse (Nova, Claude on Bedrock, ...) ---------------------------------------
@@ -130,7 +146,11 @@ function bedrockBrain(model: string): Brain {
         ...(toolSpecs.length ? { toolConfig: { tools: toolSpecs } } : {}),
         inferenceConfig: { maxTokens: 1024 },
       }));
-      const content = r.output?.message?.content ?? [];
+      // Keep only the spoken reply in text blocks, in what we show and in the history we send back next time.
+      const content = (r.output?.message?.content ?? [])
+        .filter((b) => !(b as any).reasoningContent)
+        .map((b) => (b.text !== undefined ? { text: spokenReply(b.text) } : b))
+        .filter((b) => b.text === undefined || b.text);
       return {
         text: content.map((b) => b.text ?? "").join(" ").trim(),
         toolCalls: content.filter((b) => b.toolUse).map((b) => ({ id: b.toolUse!.toolUseId!, name: b.toolUse!.name!, args: (b.toolUse!.input ?? {}) as Record<string, unknown> })),

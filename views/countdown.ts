@@ -1,8 +1,39 @@
 import { startCard, esc, TZ } from "./shared/base.js";
-import { attribution, icon, localHour } from "./shared/art.js";
+import { attribution, icon, localHour, bigTime } from "./shared/art.js";
 import { illo, wireIllo } from "./shared/illo.js";
 
 interface Nudge { kind: "nudge"; closesAt: string; serverNow: string; walkMinutes: number; closesDisplay: string; speedup: number }
+interface Change {
+  kind: "change"; change: "delay" | "gate" | "cancelled"; flightNumber: string; serverNow: string; closesDisplay: string;
+  shiftMinutes?: number; newDepartureDisplay?: string; oldDepartureDisplay?: string; makesGoal?: boolean; marginMinutes?: number; gate?: string; oldGate?: string;
+}
+
+// A flight change the watcher caught: what changed, the new time (AM/PM tagged), whether it still makes the goal.
+function renderChange(c: Change) {
+  if (timer) clearInterval(timer);
+  const head = c.change === "cancelled" ? `${esc(c.flightNumber)} is cancelled` : c.change === "gate" ? `Gate change for ${esc(c.flightNumber)}` : `${esc(c.flightNumber)} is ${c.shiftMinutes! > 0 ? `delayed ${c.shiftMinutes} min` : "leaving early"}`;
+  const big = c.change === "gate" ? `<span class="gate gc-num">${esc(c.gate)}</span>` : c.change === "delay" ? bigTime(c.newDepartureDisplay ?? "") : `<span class="gone">${icon.alert}</span>`;
+  const was = c.change === "gate" ? `was gate ${esc(c.oldGate)}` : c.change === "delay" ? `was ${esc(c.oldDepartureDisplay)}` : "";
+  const verdict = c.change === "cancelled"
+    ? `<div class="strip bad m-in" style="--i:2">${icon.alert}<span>Let's find a flight that still makes it</span></div>`
+    : c.makesGoal === false
+      ? `<div class="strip bad m-in" style="--i:2">${icon.alert}<span>Now ${Math.abs(c.marginMinutes ?? 0)} min late for your meeting</span></div>`
+      : `<div class="strip ok m-in" style="--i:2">${icon.checkCircle}<span>${c.marginMinutes !== undefined ? `Still ${c.marginMinutes} min early for your meeting` : "Your plan still works"}</span></div>`;
+  root.innerHTML = `
+    ${attribution("GateCue, flight update")}
+    <section class="gc-root nudge change ${c.change} m-in">
+      <div class="visual">
+        ${illo("airfield", localHour(c.serverNow, TZ), { pos: "62% 50%" })}
+        <div class="on-pic"><div class="big">${big}</div>${was ? `<div class="was">${was}</div>` : ""}</div>
+      </div>
+      <div class="txt">
+        <div class="h">${head}</div>
+        <div class="s">${c.change === "delay" ? `Check-in can still close on the original schedule, at ${esc(c.closesDisplay)}.` : c.change === "gate" ? "Same time, new gate. Your walk may change." : "Nothing else changes until you choose a new flight."}</div>
+        ${verdict}
+      </div>
+    </section>`;
+  wireIllo(root);
+}
 
 const root = document.getElementById("root")!;
 let timer: number | undefined;
@@ -66,4 +97,4 @@ function urgency(left: number, walk: number): string {
   return `color-mix(in oklab, #FFB547 ${(t * 100).toFixed(0)}%, #FF6B5B)`;
 }
 
-startCard<Nudge>("countdown", render);
+startCard<Nudge | Change>("countdown", (d: any) => (d.kind === "change" ? renderChange(d) : render(d)));

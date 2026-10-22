@@ -9,7 +9,9 @@
     <button data-device="echo-show-8">Echo Show 8</button><button data-device="echo-show-15">Echo Show 15</button><button data-device="mobile">Phone</button><button data-device="voice">Voice only</button>
   </nav>
   <button id="theme">Light / dark</button>
+  <button id="voice" aria-pressed="true">Voice on</button>
   <label>Scene <select id="scene" class="scene-select"><option value="airport">Thu 5:30 AM, at the airport</option><option value="night">Wed 9:40 PM, the night before</option></select></label>
+  <label hidden>Simulate <select id="disrupt" class="scene-select"><option value="">Flight change…</option><option value="delay">Delay 40 min</option><option value="late">Delay 2 h 30 (misses meeting)</option><option value="gate">Gate change</option><option value="cancel">Cancel flight</option><option value="clear">Back to normal</option></select></label>
   <span id="status">Connecting…</span>
 </header>
 <div class="stage"><div id="frame" class="frame">
@@ -37,6 +39,6 @@
     <div id="modal" class="modal" hidden></div>
   </div>
 </div></div>
-<form id="say" class="say"><input id="utter" placeholder="Say something to Alexa, for example: I need to be at an 11 AM meeting in San Francisco tomorrow" aria-label="What you say to Alexa"><button>Say</button></form>
+<form id="say" class="say"><button type="button" id="mic" class="mic" aria-pressed="false" aria-label="Talk to Alexa"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button><input id="utter" placeholder="Say something to Alexa, for example: I need to be at an 11 AM meeting in San Francisco tomorrow" aria-label="What you say to Alexa"><button>Say</button></form>
 <script type="module" src="./host.js"></script>
 </body></html>

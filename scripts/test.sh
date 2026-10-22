@@ -3,10 +3,14 @@
 set -e
 cd "$(dirname "$0")/.."
 npx tsx tests/plan.test.ts
+npx tsx tests/consent.test.ts
+npx tsx tests/spoken.test.ts
 PORT=8797
+if lsof -ti tcp:$PORT >/dev/null 2>&1; then echo "Port $PORT is busy (an old test server?). Stop it first: lsof -ti tcp:$PORT | xargs kill"; exit 1; fi
 PORT=$PORT GATECUE_DEMO_NOW=2026-10-15T05:30:00-07:00 GATECUE_DEMO_SPEEDUP=60 GATECUE_SCHEDULE=demo GC_AWS=0 \
-  RAPIDAPI_KEY= STRIPE_SECRET_KEY= ANTHROPIC_API_KEY= GC_BRAIN=scripted npx tsx server/index.ts > /tmp/gatecue-test-server.log 2>&1 &
+  RAPIDAPI_KEY= STRIPE_SECRET_KEY= ANTHROPIC_API_KEY= GC_BRAIN=scripted node --import tsx server/index.ts > /tmp/gatecue-test-server.log 2>&1 &
 SRV=$!
 trap 'kill $SRV 2>/dev/null' EXIT
 for i in $(seq 1 40); do curl -s "http://localhost:$PORT/healthz" >/dev/null 2>&1 && break; sleep 0.25; done
 BASE="http://localhost:$PORT" npx tsx tests/e2e-client.ts
+BASE="http://localhost:$PORT" npx tsx tests/scenarios.test.ts

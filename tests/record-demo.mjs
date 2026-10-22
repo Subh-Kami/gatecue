@@ -25,7 +25,7 @@ await page.click("#modal input[type=checkbox]"); await page.waitForTimeout(900);
 await page.click("#modal button[type=submit]"); await page.waitForTimeout(2600);
 await page.click("#modal #no"); await page.waitForTimeout(2500);
 await say("Flights that make it", 3500);
-await say("Review UA 499 at 7:11 AM", 4200);
+await say("Review BL 499 at 7:11 AM", 4200);
 const v = page.video();
 await ctx.close(); await browser.close(); srv.close();
 console.log(await v.path());

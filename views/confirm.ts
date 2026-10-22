@@ -3,30 +3,32 @@ import { attribution, icon, bigTime, hourFromDisplay, flipText } from "./shared/
 import { illo, wireIllo } from "./shared/illo.js";
 
 type Conf =
-  | { kind: "ride"; status: string; pickupDisplay: string; pickupDay?: string; pickup?: string; stop?: string; dropoff?: string; priceUsd?: number; card?: string }
+  | { kind: "ride"; status: string; pickupDisplay: string; pickupDay?: string; pickup?: string; stop?: string; dropoff?: string; link?: string; scheduleAhead?: boolean }
   | { kind: "flight"; status: string; confirmation?: string; flightNumber: string; from?: string; to?: string; departureDisplay: string; arrivalDisplay?: string; departureDay: string; fareUsd: number };
 
 const root = document.getElementById("root")!;
 const CHECK = `<svg class="chk" viewBox="0 0 52 52" aria-hidden="true"><circle cx="26" cy="26" r="24" class="m-pop"/><path d="M15 27l7 7 15-16" class="m-draw" style="--len:40"/></svg>`;
 
-function render(c: Conf) {
-  if (c.status !== "booked") {
+function render(c: Conf, app?: any) {
+  if (c.status !== "booked" && c.status !== "handed_off") {
     root.innerHTML = `${attribution()}<section class="gc-root m-in plain"><span class="gc-status">${icon.clock}Nothing was booked.</span></section>`;
     return;
   }
   if (c.kind === "ride") {
+    // Handoff: the ride app is open with the trip filled in; the traveller requests (or schedules) and pays there.
     root.innerHTML = `${attribution()}
       <section class="gc-root conf m-in">
         <div class="banner">${illo("home", hourFromDisplay(c.pickupDisplay), { pos: "60% 72%" })}
-          <div class="on">${CHECK}<div><div class="ok-l">Ride booked</div><div class="big">${bigTime(c.pickupDisplay)}</div><div class="sub">Pickup ${esc(c.pickupDay ?? "")}</div></div></div>
+          <div class="on"><span class="handoff">${icon.arrow}</span><div><div class="ok-l">${c.scheduleAhead ? "Schedule your ride for" : "Request your ride now"}</div><div class="big">${bigTime(c.pickupDisplay)}</div><div class="sub">Pickup ${esc(c.pickupDay ?? "")}</div></div></div>
         </div>
         <ol class="path">
           <li class="m-in" style="--i:1"><span class="pt"></span>${esc(c.pickup ?? "Home")}</li>
-          ${c.stop ? `<li class="m-in" style="--i:2"><span class="pt"></span>Pick up at ${esc(c.stop)}</li>` : ""}
+          ${c.stop ? `<li class="m-in" style="--i:2"><span class="pt"></span>Add a stop: ${esc(c.stop)}</li>` : ""}
           <li class="m-in" style="--i:3"><span class="pt end"></span>${esc(c.dropoff ?? "Airport")}</li>
         </ol>
-        <div class="foot gc-num">${icon.card}$${(c.priceUsd ?? 0).toFixed(2)} on your ${esc(c.card ?? "card")}</div>
+        <div class="foot">${icon.card}<span>You'll see the price and pay in your ride app.</span>${c.link ? `<button class="gc-btn primary open">Open ride app</button>` : ""}</div>
       </section>`;
+    root.querySelector(".open")?.addEventListener("click", () => app?.openLink({ url: c.link }));
     wireIllo(root);
     return;
   }

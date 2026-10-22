@@ -5,6 +5,7 @@ import { DynamoDBClient, DescribeTableCommand } from "@aws-sdk/client-dynamodb";
 import { SESv2Client, GetAccountCommand } from "@aws-sdk/client-sesv2";
 import { GeoRoutesClient, CalculateRoutesCommand } from "@aws-sdk/client-geo-routes";
 import { BedrockRuntimeClient, ConverseCommand } from "@aws-sdk/client-bedrock-runtime";
+import { PollyClient, SynthesizeSpeechCommand } from "@aws-sdk/client-polly";
 
 const region = process.env.AWS_REGION ?? "us-east-1";
 const table = process.env.GC_TABLE ?? "gatecue-memory";
@@ -36,6 +37,10 @@ await check("Location drive time", async () => {
   const route = r.Routes?.[0];
   const secs = route?.Summary?.Duration ?? route?.Legs?.reduce((s, l) => s + (l.VehicleLegDetails?.Summary?.Overview?.Duration ?? 0), 0);
   return `downtown Seattle to SEA ≈ ${Math.round((secs ?? 0) / 60)} min by car`;
+});
+await check("Polly voice", async () => {
+  const r = await new PollyClient({ region }).send(new SynthesizeSpeechCommand({ Text: "GateCue test", OutputFormat: "mp3", Engine: "generative", VoiceId: "Ruth" }));
+  return `${(await r.AudioStream.transformToByteArray()).length} bytes of speech (Ruth, generative)`;
 });
 await check(`Bedrock ${model}`, async () => {
   const r = await new BedrockRuntimeClient({ region }).send(new ConverseCommand({

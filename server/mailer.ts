@@ -92,6 +92,13 @@ export function bookingEmail(b: BookingEmailInput) {
   return { subject, html: shell("flight", "Your flight", body, foot), text, image: "flight" as const };
 }
 
+// A short alert (delay, gate change, cancellation): same look, one message.
+export function alertEmail(subject: string, text: string) {
+  const body = `<div style="font-size:13px;color:#9A5B00;text-transform:uppercase;letter-spacing:.08em">Flight update</div>
+<div style="font-size:22px;line-height:1.35;margin:8px 0 4px">${esc(text)}</div>`;
+  return { subject, html: shell("plan", "Your trip", body, `Times are Pacific time (${TZ}).`), text: `${text}\n\nGateCue, an Alexa+ add-on`, image: "plan" as const };
+}
+
 export interface SendResult { ok: boolean; messageId?: string; reason?: string }
 export async function sendEmail(mail: { subject: string; html: string; text: string; image: "plan" | "ride" | "flight" }): Promise<SendResult> {
   const to = travellerEmail();

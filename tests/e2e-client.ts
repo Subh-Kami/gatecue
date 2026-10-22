@@ -16,6 +16,7 @@ let payLocal = true;
 client.setRequestHandler(ElicitRequestSchema, async (req) => {
   const p: any = req.params;
   elicitations.push(p);
+  if (p.mode === "url" && !/checkout/.test(p.url)) return { action: "accept" }; // ride-app handoff
   if (p.mode === "url") {
     const u = new URL(p.url);
     setTimeout(async () => {
@@ -44,10 +45,10 @@ for (const n of ["plan_trip", "search_flights", "review_flight"]) {
 }
 for (const t of tools) assert.ok(t.outputSchema || t.name === "watch_trip", `${t.name} has outputSchema`);
 
-// plan_trip on the real first flight of the day (AS 725, 6:39 AM)
+// plan_trip on the real first flight of the day (CQ 725, 6:39 AM)
 const planned: any = await client.callTool({ name: "plan_trip", arguments: {
   goalTime: "2026-10-15T11:00:00-07:00", goalPlace: "Market St office", origin: "Home", pickupStop: "Sam's place",
-  flight: { number: "AS 725", from: "SEA", to: "SFO", departure: "2026-10-15T06:39:00-07:00", arrival: "2026-10-15T08:49:00-07:00" } } });
+  flight: { number: "CQ 725", from: "SEA", to: "SFO", departure: "2026-10-15T06:39:00-07:00", arrival: "2026-10-15T08:49:00-07:00" } } });
 log("plan_trip:", planned.content[0].text);
 assert.equal(planned.structuredContent.feasible, true);
 
@@ -106,7 +107,8 @@ assert.match(rev3.content[0].text, /PM this evening/);
 
 // book_ride
 const ride: any = await client.callTool({ name: "book_ride", arguments: { pickup: "Home", stop: "Sam's place", dropoff: "SEA", pickupTime: "2026-10-15T05:00:00-07:00" } });
-assert.equal(ride.structuredContent.status, "booked");
+assert.equal(ride.structuredContent.status, "handed_off");
+assert.match(ride.structuredContent.link, /^https:\/\/m\.uber\.com\/ul\/\?/);
 
 // watch_trip Task (server clock runs fast in demo mode)
 const stream = client.experimental.tasks.callToolStream({ name: "watch_trip", arguments: { checkinCloses: "2026-10-15T05:54:00-07:00", walkMinutes: 6 } }, CallToolResultSchema, { task: { ttl: 60_000 } } as any);
