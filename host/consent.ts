@@ -8,6 +8,8 @@ const ASKS: Record<string, RegExp> = {
   email_trip_plan: /\b(e-?mail|mail|send|share|inbox)\b/i,
   watch_trip: /\b(watch|keep an eye|keep track|track|monitor|remind|alert|tell me when|let me know|nudge|heads up)\b/i,
   update_preferences: /\b(prefer|preference|always|buffer|from now on|usually|remember|i like|i'd like)\b/i,
+  // A plan (re)drawn on screen is only for a message about the day, the trip or the meeting.
+  plan_trip: /\b(plan|planning|meeting|trip|day|leave|get me|get there|need to be|when should|what time|schedule|tomorrow|tonight|morning|flight|buffer|on time)\b/i,
 };
 // What an offer from Alexa has to mention for a plain "yes" to count as asking for it.
 const OFFER: Record<string, RegExp> = {
@@ -16,6 +18,7 @@ const OFFER: Record<string, RegExp> = {
   email_trip_plan: /\be-?mail\b/i,
   watch_trip: /\b(watch|keep an eye|let you know|tell you)\b/i,
   update_preferences: /\b(prefer|buffer|remember)\b/i,
+  plan_trip: /\b(plan|leave)\b/i,
 };
 const YES = /^\s*(yes|yeah|yep|yup|sure|ok|okay|go ahead|do it|please|sounds good|confirm|absolutely|of course)\b/i;
 

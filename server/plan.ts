@@ -74,9 +74,18 @@ export function dayPart(iso: string | Date, timeZone: string, now: Date = new Da
   return `${fmtDayLong(d, timeZone)}`;
 }
 
+// Spoken durations: "45 minutes", "2 hours 14 minutes", never "234 minutes".
+export function spokenMinutes(n: number): string {
+  const a = Math.abs(Math.round(n));
+  if (a < 90) return `${a} minute${a === 1 ? "" : "s"}`;
+  const h = Math.floor(a / 60), m = a % 60;
+  return `${h} hour${h === 1 ? "" : "s"}${m ? ` ${m} minute${m === 1 ? "" : "s"}` : ""}`;
+}
+
 export function relative(from: Date, to: Date): string {
   const mins = Math.round((to.getTime() - from.getTime()) / MIN);
   const abs = Math.abs(mins);
+  if (abs >= 24 * 60) { const d = Math.round(abs / 1440); const span = `${d} day${d === 1 ? "" : "s"}`; return mins >= 0 ? `in ${span}` : `${span} ago`; }
   const h = Math.floor(abs / 60);
   const m = abs % 60;
   const parts = [h ? `${h} hour${h === 1 ? "" : "s"}` : "", m ? `${m} minute${m === 1 ? "" : "s"}` : ""].filter(Boolean);
@@ -113,8 +122,8 @@ export function planTrip(i: PlanInput): Plan {
 
   const feasible = slackMinutes >= 0;
   const summary = feasible
-    ? `Leave at ${fmtTime(leaveHome, tz)}. You reach ${i.goalPlace} ${slackMinutes} minutes before your meeting.`
-    : `This flight gets you to ${i.goalPlace} ${-slackMinutes} minutes after your meeting starts.`;
+    ? `Leave at ${fmtTime(leaveHome, tz)}. You reach ${i.goalPlace} ${spokenMinutes(slackMinutes)} before your meeting.`
+    : `This flight gets you to ${i.goalPlace} ${spokenMinutes(-slackMinutes)} after your meeting starts.`;
 
   return { steps, feasible, slackMinutes, summary };
 }

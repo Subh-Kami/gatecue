@@ -3,7 +3,7 @@ import { registerAppTool, registerAppResource, RESOURCE_MIME_TYPE } from "@model
 import type { TaskStore, TaskMessageQueue } from "@modelcontextprotocol/sdk/experimental/tasks/interfaces.js";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { planTrip, fmtTime, fmtDay, spokenTime, dayPart, checkFlightAgainstGoal } from "./plan.js";
+import { planTrip, fmtTime, fmtDay, fmtDayLong, spokenTime, spokenMinutes, dayPart, checkFlightAgainstGoal } from "./plan.js";
 import { startCheckout } from "./checkout.js";
 import { getFlightStatus, aeroEnabled, type FlightStatus } from "./aerodatabox.js";
 import { demoScheduleOn } from "./demo-schedule.js";
@@ -39,6 +39,15 @@ const optionShape = z.object({
 interface Quote { id: string; option: FlightOption; goalTime: string; goalPlace: string; createdAt: number }
 const options = new Map<string, FlightOption & { goalTime: string; goalPlace: string }>();
 const quotes = new Map<string, Quote>();
+
+
+// A goal time a model got wrong (another year, already past) gets a clear correction it can act on.
+function goalProblem(goalTime: string): string | null {
+  const t = new Date(goalTime).getTime();
+  if (!Number.isFinite(t)) return `I couldn't read that time (${goalTime}). Use ISO 8601 with the UTC offset.`;
+  if (t <= now().getTime()) return `That goal time, ${fmtTime(goalTime, TZ)} on ${fmtDayLong(goalTime, TZ)} ${new Date(goalTime).getFullYear()}, has already passed. It's now ${fmtTime(now(), TZ)} on ${fmtDayLong(now(), TZ)} ${now().getFullYear()}.`;
+  return null;
+}
 
 export interface ServerDeps { taskStore: TaskStore; taskMessageQueue: TaskMessageQueue; publicBaseUrl: string }
 
@@ -93,7 +102,7 @@ function flightChange(was: FlightStatus, now_: FlightStatus, a: { goalTime?: str
     if (a.goalTime && arrOf(now_)) {
       const c = checkFlightAgainstGoal({ number: n, from: now_.from.iata ?? "", to: now_.to.iata ?? "", departure: depOf(now_), arrival: arrOf(now_) }, a.goalTime, TZ, DEFAULTS.deplaneMinutes, DEFAULTS.arrivalToVenueMinutes, now());
       makesGoal = c.makesGoal; marginMinutes = c.marginMinutes;
-      tail = c.makesGoal ? ` You'd still reach ${where} ${c.marginMinutes} minutes early.` : ` That gets you to ${where} ${-c.marginMinutes} minutes late. Want flights that still make it?`;
+      tail = c.makesGoal ? ` You'd still reach ${where} ${spokenMinutes(c.marginMinutes)} early.` : ` That gets you to ${where} ${spokenMinutes(-c.marginMinutes)} late. Want flights that still make it?`;
     }
     const verb = shift > 0 ? `is delayed ${shift} minutes` : `now leaves ${-shift} minutes early`;
     const text = `Heads up: ${n} ${verb}, leaving at ${newDep}.${tail}${shift > 0 && makesGoal !== false ? " Check-in can still close on the original schedule, so keep to your plan." : ""}`;
@@ -167,7 +176,7 @@ export function createGateCueServer(deps: ServerDeps): McpServer {
     },
     _meta: { ui: { resourceUri: viewUri("timeline") } },
   }, async (args) => {
-    const outside = routeProblem(args.flight.from, args.flight.to);
+    const outside = routeProblem(args.flight.from, args.flight.to) ?? goalProblem(args.goalTime);
     if (outside) return { isError: true, content: [{ type: "text", text: outside }] };
     const { plan, drive, driveMinutes, bufferMinutes } = await buildPlan(args);
     // Remember the trip, so the home screen, the watcher, emails and the next session all know about it.
@@ -262,18 +271,22 @@ export function createGateCueServer(deps: ServerDeps): McpServer {
       goalTime: z.string().describe("When the traveller must be at the goal, ISO 8601 with UTC offset"),
       goalPlace: z.string().describe("Name of the goal place"),
       departsAround: z.string().optional().describe("A clock time the traveller mentioned, like '6:30' or '6'. Flights leaving within 30 minutes of it, morning or evening, are listed first so the traveller can see which one they mean."),
+      excludeFlight: z.string().optional().describe("A flight to leave out, e.g. the traveller's cancelled or missed flight number"),
     },
-    outputSchema: { headline: z.string(), goalDisplay: z.string(), options: z.array(optionShape), hiddenCount: z.number() },
+    outputSchema: { headline: z.string(), goalDisplay: z.string(), options: z.array(optionShape), hiddenCount: z.number(), nearestId: z.string().optional() },
     _meta: { ui: { resourceUri: viewUri("flights") } },
-  }, async ({ from, to, goalTime, goalPlace, departsAround }) => {
+  }, async ({ from, to, goalTime, goalPlace, departsAround, excludeFlight }) => {
     from = from.trim().toUpperCase(); to = to.trim().toUpperCase();
-    const outside = routeProblem(from, to);
+    const outside = routeProblem(from, to) ?? goalProblem(goalTime);
     if (outside) return { isError: true, content: [{ type: "text", text: outside }] };
     if (!aeroEnabled()) return { isError: true, content: [{ type: "text", text: "I can't search flights right now. Try again in a moment." }] };
     const t = now();
     let all: FlightOption[];
     try {
       all = await searchFlights({ from, to, windows: searchWindows(t, goalTime), goalTime, timeZone: TZ, now: t, deplaneMinutes: DEFAULTS.deplaneMinutes, arrivalToVenueMinutes: DEFAULTS.arrivalToVenueMinutes });
+      // The flight the traveller just lost (cancelled or missed) is never offered back to them.
+      const gone = excludeFlight?.replace(/\s+/g, "").toUpperCase();
+      if (gone) all = all.filter((o) => o.flight.number.replace(/\s+/g, "").toUpperCase() !== gone);
     } catch {
       return { isError: true, content: [{ type: "text", text: "The flight schedule service didn't answer. Want me to try again?" }] };
     }
@@ -292,9 +305,9 @@ export function createGateCueServer(deps: ServerDeps): McpServer {
       : "";
     const best = makers[0];
     const spoken = nearTxt + (best
-      ? `${headline}. The best is ${best.flight.number} at ${best.check.departureDisplay} ${best.check.departureDaySpoken}, with ${best.check.marginMinutes} minutes to spare.`
+      ? `${headline}. The best is ${best.flight.number} at ${best.check.departureDisplay} ${best.check.departureDaySpoken}, with ${spokenMinutes(best.check.marginMinutes)} to spare.`
       : `${headline}. The earliest is ${all[0].flight.number} at ${all[0].check.departureDisplay} ${all[0].check.departureDaySpoken}.`);
-    return { content: [{ type: "text", text: spoken }], structuredContent: { headline, goalDisplay: fmtTime(goalTime, TZ), options: shown, hiddenCount } };
+    return { content: [{ type: "text", text: spoken }], structuredContent: { headline, goalDisplay: fmtTime(goalTime, TZ), options: shown, hiddenCount, ...(near[0] ? { nearestId: near[0].id } : {}) } };
   });
 
   // ---- review_flight: the panic-proof check, no payment -------------------------------------
@@ -316,7 +329,7 @@ export function createGateCueServer(deps: ServerDeps): McpServer {
     const c = o.check;
     const refund = o.refundable ? "It's refundable." : "It's non-refundable.";
     const spoken = c.makesGoal
-      ? `${o.flight.number} leaves at ${c.departureDisplay} ${c.departureDaySpoken}, ${c.departsIn}, and gets you there ${c.marginMinutes} minutes early. It's $${o.fareUsd}. ${refund} Should I book it?`
+      ? `${o.flight.number} leaves at ${c.departureDisplay} ${c.departureDaySpoken}, ${c.departsIn}, and gets you there ${spokenMinutes(c.marginMinutes)} early. It's $${o.fareUsd}. ${refund} Should I book it?`
       : `Careful. ${o.flight.number} leaves at ${c.departureDisplay} ${c.departureDaySpoken}, and lands after your ${spokenTime(o.goalTime, TZ)} meeting. ${refund} Want flights that make your meeting instead?`;
     return {
       content: [{ type: "text", text: spoken }],
@@ -458,6 +471,12 @@ export function createGateCueServer(deps: ServerDeps): McpServer {
     _meta: { ui: { resourceUri: viewUri("countdown") } },
   }, {
     async createTask(args, { taskStore, taskRequestedTtl }) {
+      // Watching check-in always watches the trip's flight too: fill in what a model left out from memory.
+      if (!args.flightNumber) {
+        const trips = await getTrips().catch(() => []);
+        const trip = trips.find((t) => new Date(t.goalTime).getTime() > now().getTime());
+        if (trip) args = { ...args, flightNumber: trip.flight.number, flightDate: trip.flight.departure.slice(0, 10), goalTime: args.goalTime ?? trip.goalTime, goalPlace: args.goalPlace ?? trip.goalPlace };
+      }
       const task = await taskStore.createTask({ ttl: taskRequestedTtl ?? 60 * 60_000, pollInterval: 500 });
       const closes = new Date(args.checkinCloses);
       const latestLeave = new Date(closes.getTime() - args.walkMinutes * 60_000);

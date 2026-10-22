@@ -1,4 +1,4 @@
-import { startCard, esc, TZ } from "./shared/base.js";
+import { startCard, esc, mins, TZ } from "./shared/base.js";
 import { attribution, icon, localHour, bigTime } from "./shared/art.js";
 import { illo, wireIllo } from "./shared/illo.js";
 
@@ -17,8 +17,8 @@ function renderChange(c: Change) {
   const verdict = c.change === "cancelled"
     ? `<div class="strip bad m-in" style="--i:2">${icon.alert}<span>Let's find a flight that still makes it</span></div>`
     : c.makesGoal === false
-      ? `<div class="strip bad m-in" style="--i:2">${icon.alert}<span>Now ${Math.abs(c.marginMinutes ?? 0)} min late for your meeting</span></div>`
-      : `<div class="strip ok m-in" style="--i:2">${icon.checkCircle}<span>${c.marginMinutes !== undefined ? `Still ${c.marginMinutes} min early for your meeting` : "Your plan still works"}</span></div>`;
+      ? `<div class="strip bad m-in" style="--i:2">${icon.alert}<span>Now ${mins(Math.abs(c.marginMinutes ?? 0))} late for your meeting</span></div>`
+      : `<div class="strip ok m-in" style="--i:2">${icon.checkCircle}<span>${c.marginMinutes !== undefined ? `Still ${mins(c.marginMinutes)} early for your meeting` : "Your plan still works"}</span></div>`;
   root.innerHTML = `
     ${attribution("GateCue, flight update")}
     <section class="gc-root nudge change ${c.change} m-in">

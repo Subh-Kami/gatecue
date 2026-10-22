@@ -100,7 +100,7 @@ Without keys, GateCue uses a built-in illustrative flight schedule (made-up airl
 ## Tests
 
 ```bash
-npm test               # unit tests, end-to-end MCP test and 28 travel-day scenarios, against a fresh demo server
+npm test               # unit tests, end-to-end MCP test and 30 travel-day scenarios, against a fresh demo server
 npm run test:agent     # the simulator driven by a model (a mock Anthropic API, no key needed)
 npm run test:aws       # live DynamoDB, Location and Bedrock checks (needs aws login)
 npm run test:email     # sends one real plan email through SES

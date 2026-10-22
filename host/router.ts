@@ -3,7 +3,7 @@
 // With a model connected (Amazon Bedrock or the Anthropic API) the model chooses the tools instead.
 export type Step = { tool: string; args: Record<string, unknown>; quiet?: boolean } | { say: string };
 
-export interface RouterState { lastOptions: any[]; lastQuoteId?: string; scenario: typeof SCENARIO }
+export interface RouterState { lastOptions: any[]; lastQuoteId?: string; lostFlight?: string; scenario: typeof SCENARIO }
 
 export const SCENARIO = {
   goalTime: "2026-10-15T11:00:00-07:00",
@@ -17,7 +17,7 @@ export const SCENARIO = {
 export function route(text: string, st: RouterState): Step[] {
   const t = text.toLowerCase().trim();
   const s = st.scenario;
-  const search = (departsAround?: string) => ({ tool: "search_flights", args: { from: s.flight.from, to: s.flight.to, goalTime: s.goalTime, goalPlace: s.goalPlace, ...(departsAround ? { departsAround } : {}) } });
+  const search = (departsAround?: string) => ({ tool: "search_flights", args: { from: s.flight.from, to: s.flight.to, goalTime: s.goalTime, goalPlace: s.goalPlace, ...(departsAround ? { departsAround } : {}), ...(st.lostFlight ? { excludeFlight: st.lostFlight } : {}) } });
 
   // Somewhere other than the story's San Francisco: say plainly what GateCue covers instead of a dead end.
   const dest = t.match(/\b(?:fly|flying|flight|flights|trip|travel|book me|get me)\b[^.?!]*?\bto\s+([a-z][a-z .'-]{1,40})/)?.[1]?.trim();
@@ -47,7 +47,9 @@ export function route(text: string, st: RouterState): Step[] {
   }
   const clock = t.match(/(?:book|take|get me on)\s+the\s+(\d{1,2}(?::\d{2})?)(?:\s*o'?clock)?/);
   if (clock) return [{ ...search(clock[1]), quiet: true }, { tool: "review_flight", args: { optionId: "$firstOption" } }];
-  if (/other flights|flights that make|next flight|cancel+ed|what are my options|show me flights/.test(t)) return [search()];
+  // A cancelled or missed flight is left out: offering it back would be the worst possible answer.
+  if (/cancel+ed|missed (my|the) flight/.test(t)) { st.lostFlight = s.flight.number; return [search()]; }
+  if (/other flights|flights that make|next flight|what are my options|show me flights/.test(t)) return [search()];
   if (/email|e-mail|send (me )?(the|my) plan|mail me/.test(t)) return [{ tool: "email_trip_plan", args: {} }];
   if (/watch|keep an eye/.test(t)) return [{ tool: "watch_trip", args: { checkinCloses: s.checkinCloses, walkMinutes: 6, flightNumber: s.flight.number, flightDate: s.flight.departure.slice(0, 10), goalTime: s.goalTime, goalPlace: s.goalPlace } }];
   if (/plan (my|the) day again|re-?plan/.test(t)) return [{ tool: "plan_trip", args: { goalTime: s.goalTime, goalPlace: s.goalPlace, origin: s.origin, pickupStop: s.pickupStop, flight: s.flight } }];

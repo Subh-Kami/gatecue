@@ -4,7 +4,7 @@
 // In the SES sandbox both the sender (GC_SES_FROM, default: the traveller address) and recipient must be verified.
 import { readFileSync } from "node:fs";
 import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2";
-import { fmtDayLong, fmtTime, type Step } from "./plan.js";
+import { fmtDayLong, fmtTime, spokenMinutes, type Step } from "./plan.js";
 
 const TZ = "America/Los_Angeles";
 let client: SESv2Client | undefined;
@@ -47,7 +47,7 @@ export function planEmail(p: PlanEmailInput) {
   const day = fmtDayLong(leave.at, TZ);
   const subject = `Leave at ${leave.display}, ${day}: ${p.flightNumber} to ${p.to}`;
   const status = p.feasible
-    ? `<span style="color:#1B7A45">You reach ${esc(p.goalPlace)} ${p.slackMinutes} minutes early.</span>`
+    ? `<span style="color:#1B7A45">You reach ${esc(p.goalPlace)} ${spokenMinutes(p.slackMinutes)} early.</span>`
     : `<span style="color:#B3261E">This plan gets you to ${esc(p.goalPlace)} ${-p.slackMinutes} minutes late.</span>`;
   const rows = p.steps.map((s) => `<tr>
     <td style="padding:9px 0;border-top:1px solid #E3E7ED;font-size:15px;white-space:nowrap;width:120px;font-variant-numeric:tabular-nums;${s.id === "cutoff" ? "color:#9A5B00;font-weight:600" : ""}">${timeHTML(s.display)}</td>
@@ -58,7 +58,7 @@ export function planEmail(p: PlanEmailInput) {
 <div style="font-size:15px;margin-bottom:18px">${status}</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows}</table>`;
   const foot = `Drive ${p.pickupStop ? `with the stop at ${esc(p.pickupStop)} ` : ""}about ${p.driveMinutes} minutes${p.driveSource === "Amazon Location" ? " in traffic (Amazon Location)" : " (estimate)"}. You asked to be at check-in ${p.bufferMinutes} minutes before it closes.<br>Times are Pacific time (${TZ}).`;
-  const text = [`${day}`, `Leave home at ${leave.display}.`, p.feasible ? `You reach ${p.goalPlace} ${p.slackMinutes} minutes early.` : `This plan gets you to ${p.goalPlace} ${-p.slackMinutes} minutes late.`, "", ...p.steps.map((s) => `${s.display.padEnd(9)} ${s.label}${s.note ? ` · ${s.note}` : ""}`), "", `Drive about ${p.driveMinutes} minutes. Times are Pacific time.`, "", "GateCue, an Alexa+ add-on"].join("\n");
+  const text = [`${day}`, `Leave home at ${leave.display}.`, p.feasible ? `You reach ${p.goalPlace} ${spokenMinutes(p.slackMinutes)} early.` : `This plan gets you to ${p.goalPlace} ${spokenMinutes(-p.slackMinutes)} late.`, "", ...p.steps.map((s) => `${s.display.padEnd(9)} ${s.label}${s.note ? ` · ${s.note}` : ""}`), "", `Drive about ${p.driveMinutes} minutes. Times are Pacific time.`, "", "GateCue, an Alexa+ add-on"].join("\n");
   return { subject, html: shell("plan", "Your travel day", body, foot), text, image: "plan" as const };
 }
 

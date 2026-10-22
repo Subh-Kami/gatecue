@@ -85,24 +85,24 @@ try {
   const spoken = await page.locator(".turn.alexa:not(.old) .say-text").first().textContent();
   assert.match(spoken, /^Leave at \d{1,2}:\d{2} AM\./);
   assert.equal(await page.locator(".turn.alexa:not(.old)").count(), 1, "one response on screen, context lookup stays silent");
-  const firstPlan = requests.find((r) => r.messages.at(-1).content.some((b) => b.type === "tool_result" && r.messages.at(-2).content.some((u) => u.name === "plan_trip" && u.id === b.tool_use_id)));
-  const planData1 = JSON.parse(firstPlan.messages.at(-1).content[0].content.split("\nData: ")[1]);
-  assert.equal(planData1.bufferMinutes, 15);
-  assert.equal(planData1.driveSource, "estimate");
+  // The plan card answered, so the turn ends there: no extra model call just to stay quiet.
+  await page.waitForTimeout(1500);
+  assert.equal(requests.length, 2, "context lookup + plan_trip, then the card speaks for itself");
 
-  // 2. A lasting preference is saved, then the plan is redone with it.
+  // 2. A lasting preference is saved, then the host re-plans with it right away (no second guess by the model).
+  const leaveOf = (txt) => { const m = txt.match(/Leave at (\d{1,2}):(\d{2}) AM/); return Number(m[1]) * 60 + Number(m[2]); };
+  const leave1 = leaveOf(spoken);
   const before = requests.length;
   await page.fill("#utter", "From now on I want 20 minutes of buffer");
   await page.press("#utter", "Enter");
-  await page.waitForFunction(() => document.querySelector(".turn.alexa:not(.old) .say-text.add"), null, { timeout: 20000 });
+  await page.waitForFunction(() => document.querySelectorAll(".turn.alexa").length >= 3 && document.querySelector(".turn.alexa:not(.old)[data-ready='1'] iframe[title='plan_trip card']"), null, { timeout: 20000 });
   const later = requests.slice(before);
-  const tr = (name) => later.map((r) => ({ r, b: r.messages.at(-1).content.find((x) => x.type === "tool_result" && r.messages.at(-2).content.some((u) => u.name === name && u.id === x.tool_use_id)) })).filter((x) => x.b).at(-1);
-  assert.match(tr("update_preferences").b.content, /20 minutes/);
-  const planData2 = JSON.parse(tr("plan_trip").b.content.split("\nData: ")[1]);
-  assert.equal(planData2.bufferMinutes, 20);
-  const leave1 = new Date(planData1.steps[0].at), leave2 = new Date(planData2.steps[0].at);
-  assert.equal((leave1 - leave2) / 60000, 5, "5 more minutes of buffer means leaving 5 minutes earlier");
-  assert.match(await page.locator(".turn.alexa:not(.old) .say-text.add").textContent(), /re-planned/);
+  assert.equal(later.length, 1, "one model call: it saves the preference, the host re-plans");
+  const planData1 = JSON.parse(later[0].messages.at(-1).content.find((b) => b.type === "tool_result").content.split("\nData: ")[1]);
+  assert.equal(planData1.bufferMinutes, 15);
+  assert.equal(planData1.driveSource, "estimate");
+  const spoken2 = await page.locator(".turn.alexa:not(.old) .say-text").first().textContent();
+  assert.equal(leave1 - leaveOf(spoken2), 5, "5 more minutes of buffer means leaving 5 minutes earlier");
 
   // 3. Every request carried the whole conversation, in order.
   const lastReq = requests.at(-1);

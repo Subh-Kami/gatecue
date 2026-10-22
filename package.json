@@ -12,7 +12,7 @@
     "build": "node scripts/build-views.mjs && node scripts/build-host.mjs",
     "test": "./scripts/test.sh",
     "serve:demo": "./scripts/serve-demo.sh",
-    "stop": "lsof -ti tcp:8787 | xargs kill 2>/dev/null; echo stopped",
+    "stop": "pkill -f 'tsx [w]atch.*server/index.ts' 2>/dev/null; lsof -ti tcp:8787 | xargs kill 2>/dev/null; echo stopped",
     "check:aws": "node --env-file-if-exists=.env scripts/check-aws.mjs",
     "test:agent": "node tests/agent.test.mjs",
     "test:aws": "tsx --env-file-if-exists=.env tests/aws-live.ts",

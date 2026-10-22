@@ -11,9 +11,12 @@ const cases: [string, string, string, boolean][] = [
   ["book_flight", "Just book the 6 o'clock", "", true],
   ["book_flight", "Show me flights", "", false],
   ["book_flight", "Book it anyway", "", true],
-  ["plan_trip", "anything", "", true],
+  ["get_trip_context", "anything", "", true],
   ["search_flights", "My flight got cancelled", "", true],
   ["update_preferences", "I like 20 minutes of buffer", "", true],
+  ["plan_trip", "Thanks Alexa!", "", false],
+  ["plan_trip", "Get me to my meeting tomorrow", "", true],
+  ["plan_trip", "I need to be at an 11 AM meeting in San Francisco tomorrow", "", true],
 ];
 let bad = 0;
 for (const [t, u, a, want] of cases) { const got = consent(t, u, a).ok; if (got !== want) { bad++; console.log("FAIL", t, u, got); } }

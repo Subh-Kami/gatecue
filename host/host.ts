@@ -53,6 +53,7 @@ const SCENES: Record<string, string> = { night: "2026-10-14T21:40:00-07:00", air
 async function setScene(name: string) {
   const iso = SCENES[name] ?? name;
   clockStart = new Date(iso).getTime(); realStart = Date.now(); tickClock();
+  lostFlight = undefined; state.lostFlight = undefined; // a new scene starts the day fresh
   // Demo-only endpoint on the GateCue server (not an MCP tool): moves the scenario clock for filming.
   await fetch(new URL("/demo/clock", SERVER), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ now: iso }) }).catch(() => {});
 }
@@ -330,12 +331,16 @@ async function callTool(name: string, args: any, quiet = false, background = fal
   const sc = result.structuredContent;
   if (name === "search_flights" && sc?.options) state.lastOptions = sc.options;
   if (name === "review_flight" && sc?.quoteId) state.lastQuoteId = sc.quoteId;
-  if (!result.isError) await renderCard(name, args, result, turn);
+  // "Nothing was booked" is said aloud; a card for it would only repeat that.
+  if (!result.isError && !["cancelled", "not_paid"].includes(sc?.status)) await renderCard(name, args, result, turn);
   followups(turn, chipsFor(name, sc));
   return result;
 }
 
+let watchingFlight: string | undefined; // the flight Simulate acts on: the one being watched
 async function watch(args: any, rearm = false) {
+  if (args?.flightNumber) watchingFlight = args.flightNumber;
+  else watchingFlight = SCENARIO.flight.number; // the server fills in the trip's flight
   if (!rearm) {
     const turn = add(sayP(args.flightNumber ? `I'll watch your check-in time and ${args.flightNumber}, and tell you if anything changes.` : "I'll watch your check-in time and tell you when to move."), "alexa watching");
     lastTurn = turn;
@@ -354,6 +359,7 @@ async function watch(args: any, rearm = false) {
       document.body.dataset.nudged = "1";
       // A delay or gate change doesn't end the trip: keep watching from the new state.
       const sc = m.result.structuredContent;
+      if (sc?.kind === "change" && sc.change === "cancelled") { lostFlight = sc.flightNumber ?? args.flightNumber ?? watchingFlight; state.lostFlight = lostFlight; }
       if (sc?.kind === "change" && sc.change !== "cancelled") void watch(args, true);
     }
   }
@@ -403,13 +409,28 @@ function agentTurn(text: string): Promise<void> {
 // Which agent turn each flight review was shown in: a flight can be paid for only in a later turn, after the
 // traveller has seen its review card and said to book it.
 let agentTurnNo = 0;
+const END_AFTER = new Set(["plan_trip", "search_flights", "review_flight", "book_flight", "book_ride", "email_trip_plan", "watch_trip", "get_flight_status"]);
 const reviewedIn = new Map<string, number>();
+let lostFlight: string | undefined; // the flight the traveller lost this session
+let lastPlanArgs: unknown; // the plan on screen, re-run when a preference changes it
 async function agentLoop(text: string) {
   const turnNo = ++agentTurnNo;
-  const lastAlexa = [...transcript].reverse().find((m) => m.role === "assistant" && m.text)?.text ?? "";
+  // What Alexa last said on screen (a card's spoken line included), so "yes" answers the question actually asked.
+  const shown = [...document.querySelectorAll(".turn.alexa .say-text")].pop()?.textContent ?? "";
+  const lastAlexa = shown || ([...transcript].reverse().find((m) => m.role === "assistant" && m.text)?.text ?? "");
   const clock = bareClock(text); // "the 6 o'clock": no AM or PM given
-  let searchedAround = false, endTurn = false;
-  transcript.push({ role: "user", text });
+  // Thanks needs no model and no action.
+  if (/^\s*(thanks|thank you|thx|cheers)\b[^?]*$/i.test(text) && text.length < 40) { alexaSays("You're welcome. Safe travels."); return; }
+  // A bare "yes" or "okay" when nothing was asked: ask what they'd like instead of guessing an action.
+  if (/^\s*(yes|yeah|yep|sure|ok|okay|no|nope)[.!]?\s*$/i.test(text) && !lastAlexa.includes("?")) {
+    alexaSays("What would you like to do? I can plan your travel day, find flights, set up your ride, or watch the clock for you.");
+    return;
+  }
+  let searchedAround = false, endTurn = false, nearestId: string | undefined;
+  const callsThisTurn = new Map<string, number>(); // a model retrying the same tool over and over stops at two
+  // A short answer ("yes") carries the question it answers, which may have come from a card or a background alert.
+  const shortReply = /^\s*(yes|yeah|yep|sure|ok|okay|no|nope|please)\b[\w\s,.!]{0,20}$/i.test(text) && lastAlexa.includes("?");
+  transcript.push({ role: "user", text: shortReply ? `${text} (answering Alexa: "${lastAlexa}")` : text });
   let toolTurn: HTMLElement | undefined; // the card this turn produced, if any
   for (let step = 0; step < 6; step++) {
     const pending = toolTurn ? undefined : add(THINKING, "alexa");
@@ -447,16 +468,29 @@ async function agentLoop(text: string) {
       else alexaSays(said);
       if (pending || toolTurn) void speakText(said, false, !!toolTurn);
     } else pending?.remove();
-    if (!calls.length) { setTimeout(() => speaking(false), Math.min(5000, 60 * said.length)); return; }
+    if (!calls.length) {
+      // Never leave the traveller with silence when nothing else answered this turn.
+      if (!said && !toolTurn) alexaSays(/thank/i.test(text) ? "You're welcome." : "Okay. What would you like to do next?");
+      setTimeout(() => speaking(false), Math.min(5000, 60 * said.length)); return;
+    }
     const results = [];
     for (const c of calls) {
       const hold = (why: string) => { console.info(`[agent] held back ${c.name}: ${why}`); results.push({ id: c.id, name: c.name, text: why, isError: true }); };
       if (endTurn) { hold("Not done: the turn ended. Wait for the traveller."); continue; }
+      const n = (callsThisTurn.get(c.name) ?? 0) + 1; callsThisTurn.set(c.name, n);
+      if (n > 2 && c.name !== "get_trip_context") { hold(`Not done: ${c.name} already ran twice this turn. Tell the traveller what you found.`); continue; }
       // Actions on the traveller's behalf need to have been asked for (see consent.ts).
       const gate = consent(c.name, text, lastAlexa);
       if (!gate.ok) { hold(gate.reason); continue; }
       // A clock time with no AM or PM: search around it first, so both halves of the day are on the card.
+      // Once a flight is lost (cancelled or missed), no later search in this session offers it again.
+      if (c.name === "search_flights") {
+        const ex = (c.args as any).excludeFlight;
+        if (ex) lostFlight = String(ex); else if (lostFlight) c.args = { ...c.args, excludeFlight: lostFlight };
+      }
       if (clock && c.name === "search_flights") { c.args = { ...c.args, departsAround: (c.args as any).departsAround ?? clock }; searchedAround = true; }
+      // The review shows the flight the search named for that time (morning or evening), not a guess.
+      if (clock && c.name === "review_flight" && nearestId) c.args = { ...c.args, optionId: nearestId };
       if (clock && !searchedAround && (c.name === "review_flight" || c.name === "book_flight")) {
         hold(`Not done: the traveller said "${clock}" without AM or PM. First call search_flights with departsAround "${clock}" so they see the morning and evening flights side by side, then review_flight on the flight the search names first.`);
         continue;
@@ -473,8 +507,22 @@ async function agentLoop(text: string) {
       results.push({ id: c.id, name: c.name, text: txt || "(no text)", data: r?.structuredContent, isError: !!r?.isError || !r });
       const sc = r?.structuredContent;
       if (c.name === "review_flight" && sc?.quoteId) reviewedIn.set(sc.quoteId, turnNo);
-      // The review card asks the traveller to decide, and a "not now" is an answer: either way, wait for them.
-      if (c.name === "review_flight" || ["cancelled", "not_paid"].includes(sc?.status)) endTurn = true;
+      if (c.name === "search_flights" && clock) nearestId = sc?.nearestId;
+      if (c.name === "plan_trip" && !r?.isError) lastPlanArgs = c.args;
+      // A new buffer changes the plan on screen: re-plan right away, the same way every time.
+      if (c.name === "update_preferences" && !r?.isError && lastPlanArgs && (c.args as any).bufferMinutes !== undefined) {
+        const re: any = await callTool("plan_trip", lastPlanArgs, false, true);
+        if (lastTurn) toolTurn = lastTurn;
+        const reTxt = (re?.content ?? []).filter((x: any) => x.type === "text").map((x: any) => x.text).join(" ");
+        results[results.length - 1].text += ` Re-planned with the new buffer: ${reTxt}`;
+        endTurn = true;
+      }
+      // A tool that answered with its own words and card ends the turn: the card already says it and offers the
+      // next steps, so asking the model again only adds a wait (and a chance to chain something unasked).
+      // A search for "the 6 o'clock" is the exception: the review of the flight it names comes next.
+      // After a preference change, the re-plan gets one short remark ("I've re-planned with your new buffer").
+      const answers = END_AFTER.has(c.name) && !(c.name === "search_flights" && clock && !r?.isError) && !callsThisTurn.has("update_preferences");
+      if (answers || ["cancelled", "not_paid"].includes(sc?.status)) endTurn = true;
     }
     transcript.push({ role: "tool", results });
     if (endTurn) { setTimeout(() => speaking(false), 4000); return; }
@@ -488,13 +536,16 @@ function elicit(p: any): Promise<any> {
     modalRoot.hidden = false;
     const done = (r: any) => { modalRoot.hidden = true; modalRoot.innerHTML = ""; resolve(r); };
     if (p.mode === "url") {
-      const u = new URL(p.url), host = u.hostname;
+      const u = new URL(p.url);
       const checkout = /checkout/.test(u.hostname + u.pathname);
+      // ?film=1 (recording the demo video): no third-party names on screen, and the ride app isn't actually opened.
+      const film = q.get("film") === "1", local = /^(localhost|127\.0\.0\.1)$/.test(u.hostname);
+      const host = film && !local ? (checkout ? "the payment provider's site" : "the ride app's website") : u.hostname;
       // Checkout pages vs handing off to another app (the ride app): same consent sheet, honest labels.
       modalRoot.innerHTML = `<div class="sheet2" role="dialog" aria-modal="true" aria-labelledby="st"><h2 id="st">${esc(p.message)}</h2>
         <p class="sub ${checkout ? "lock" : ""}">${checkout ? `Secure page on <strong>${esc(host)}</strong>. GateCue never sees your card details.` : `Opens your ride app (or <strong>${esc(host)}</strong>). Nothing is requested or paid until you confirm there.`}</p>
         <div class="acts"><button class="primary" id="go">${checkout ? "Open checkout" : "Open ride app"}</button><button id="no">Not now</button></div></div>`;
-      modalRoot.querySelector("#go")!.addEventListener("click", () => { window.open(p.url, "_blank"); done({ action: "accept" }); });
+      modalRoot.querySelector("#go")!.addEventListener("click", () => { if (!(film && !checkout)) window.open(p.url, "_blank"); done({ action: "accept" }); });
       modalRoot.querySelector("#no")!.addEventListener("click", () => done({ action: "decline" }));
       return;
     }
@@ -546,8 +597,9 @@ async function wireDisrupt() {
   if (!info?.demoSchedule) return;
   sel.closest("label")!.hidden = false;
   sel.addEventListener("change", async () => {
-    const flight = SCENARIO.flight.number, v = sel.value;
+    const flight = watchingFlight ?? SCENARIO.flight.number, v = sel.value;
     sel.value = "";
+    if (v === "reset") { await fetch(new URL("/demo/reset", SERVER), { method: "POST" }).catch(() => {}); location.reload(); return; }
     const body = v === "clear" ? { clear: true } : v === "delay" ? { number: flight, delayMinutes: 40 } : v === "late" ? { number: flight, delayMinutes: 150 } : v === "gate" ? { number: flight, gate: "D3" } : v === "cancel" ? { number: flight, cancelled: true } : null;
     if (body) await fetch(new URL("/demo/disrupt", SERVER), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).catch(() => {});
   });

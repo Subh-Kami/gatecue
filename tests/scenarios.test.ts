@@ -206,6 +206,17 @@ await scenario("16e. Paris: a clear answer about what GateCue covers, no flights
   assert.match(say(same), /same airport/);
 });
 
+await scenario("16f. A goal time in the past (a model's wrong year) gets a correction naming today", async () => {
+  const r = await call("search_flights", { from: "SEA", to: "SFO", goalTime: "2023-10-15T11:00:00-07:00", goalPlace: "Market St office" }); spoken.push(say(r));
+  assert.equal(r.isError, true); assert.match(say(r), /has already passed\. It's now .* 2026\./);
+});
+
+await scenario("16g. After a cancellation, the lost flight is never offered back", async () => {
+  const r = await call("search_flights", { from: "SEA", to: "SFO", goalTime: GOAL, goalPlace: "Market St office", excludeFlight: "CQ725" }); spoken.push(say(r));
+  assert.ok(r.structuredContent.options.every((o: any) => o.flight.number !== "CQ 725"));
+  assert.doesNotMatch(say(r), /CQ 725/);
+});
+
 await scenario("17. Flight status reports the gate and AM/PM time", async () => {
   const r = await call("get_flight_status", { number: "CQ 725", date: "2026-10-15" }); spoken.push(say(r));
   assert.match(say(r), /departing 6:39 AM/); assert.ok(r.structuredContent.flights[0].from.gate);

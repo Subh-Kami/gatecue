@@ -8,4 +8,5 @@ assert.equal(spokenReply("However, the instructions say that when a tool returns
 assert.equal(spokenReply("The assistant should now tell the user that the trip is being watched."), "");
 assert.equal(spokenReply("<response>I've re-planned with your new buffer.</response>"), "I've re-planned with your new buffer.");
 assert.equal(spokenReply("Okay, I'll keep an eye on your flight."), "Okay, I'll keep an eye on your flight.");
+assert.equal(spokenReply("It just couldn't handle the *copter*-ation!"), "It just couldn't handle the copter-ation!");
 console.log("spoken.test.ts: all assertions passed");

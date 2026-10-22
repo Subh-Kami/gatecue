@@ -10,6 +10,7 @@ import { setDemoNow } from "./clock.js";
 import { mountAgent } from "./agent.js";
 import { mountVoice } from "./voice.js";
 import { demoScheduleOn, setDisruption, clearDisruptions } from "./demo-schedule.js";
+import { resetMemory } from "./memory.js";
 
 const PORT = Number(process.env.PORT ?? 8787);
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL ?? `http://localhost:${PORT}`;
@@ -75,6 +76,13 @@ app.delete("/mcp", sessionRequest);
 app.post("/demo/clock", (req, res) => { res.status(setDemoNow(String(req.body?.now ?? "")) ? 204 : 404).end(); });
 // Demo only (built-in schedule): simulate a delay, gate change or cancellation so the watcher can be filmed reacting.
 app.get("/demo/info", (_req, res) => { res.json({ demoSchedule: demoScheduleOn(), demoClock: !!process.env.GATECUE_DEMO_NOW }); });
+// Demo only: back to the seeded traveller and a normal schedule, between filming takes.
+app.post("/demo/reset", async (_req, res) => {
+  if (!demoScheduleOn()) { res.status(404).end(); return; }
+  clearDisruptions();
+  await resetMemory().catch(() => {});
+  res.status(204).end();
+});
 app.post("/demo/disrupt", (req, res) => {
   if (!demoScheduleOn()) { res.status(404).end(); return; }
   const b = req.body ?? {};
